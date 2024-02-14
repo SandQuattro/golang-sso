@@ -55,3 +55,4 @@ Using Makefile:  make rebuild, restart, run, etc
 - add refresh token with db storage
 - uber zap logging
 - sliding salt position
+- gRPC other services integration
