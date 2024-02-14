@@ -1,0 +1,9 @@
+version: 1
+packages:
+  - name: "db"
+    path: "internal/app/repository/generated"
+    engine: "postgresql"
+    schema: "./migrations"
+    queries: "./db/dml"
+    emit_json_tags: true
+    emit_exact_table_names: false

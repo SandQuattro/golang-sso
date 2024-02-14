@@ -1,0 +1,1 @@
+alter table if exists public.users add column valid_till timestamp;
