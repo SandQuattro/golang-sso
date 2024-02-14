@@ -46,6 +46,8 @@ LogDoc logging subsystem, ClickHouse-based high performance logging collector ht
 
 pprof profiling in debug mode
 
+Graceful shutdown
+
 ### Building
 
 Using Makefile:  make rebuild, restart, run, etc
@@ -55,4 +57,5 @@ Using Makefile:  make rebuild, restart, run, etc
 - add refresh token with db storage
 - uber zap logging
 - sliding salt position
+- rereading config using SIGHUP signal
 - gRPC other services integration
