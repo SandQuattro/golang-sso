@@ -1,3 +1,4 @@
+### ![image](https://github.com/SandQuattro/golang-sso/assets/31468131/4454c9ac-4dcd-405a-a3cf-8e92cb2bd170)
 # Single Sign-on API
 #### Version 1.0
 
@@ -9,7 +10,7 @@ registration / authorization of users in the company's systems, refreshing the j
 
 Also providing oauth authorization through such systems as Google, VK, Mail.ru, using OAuth2.0 protocol specification (rfc6749)
 
-### Technologies:
+Technologies:
 
 Main alghorithm: Argon2 with salt hashing alghorithm. Argon2 is a cryptographic hashing algorithm specifically used to hash passwords. It provides better protection against password cracking than other hashing algorithms like Bcrypt, Scrypt, etc...
 
