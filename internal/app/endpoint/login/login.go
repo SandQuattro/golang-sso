@@ -9,6 +9,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"net/http"
+	"sso/internal/app/crypto"
 	"sso/internal/app/interfaces"
 	"sso/internal/app/structs"
 	"sso/internal/app/utils"
@@ -97,7 +98,7 @@ func (login *Endpoint) LoginHandler(ctx echo.Context) error {
 	}
 
 	// Сначала проверяем пароль на корректность
-	if !utils.ComparePass(u.Password, user.Password) {
+	if !crypto.ComparePass(u.Password, user.Password) {
 		login.failedLoginCounter.Inc()
 		err := utils.CreateTask(login.config, span, utils.TypeTelegramDelivery, u.Name, u.Email, u.ID, fmt.Sprintf("Attention required! Error in user service, account login error: invalid password for user %s", u.Email))
 		if err != nil {

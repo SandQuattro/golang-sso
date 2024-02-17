@@ -20,7 +20,7 @@ require (
 	github.com/sirupsen/logrus v1.9.2
 	github.com/stretchr/testify v1.8.2
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
-	golang.org/x/crypto v0.18.0
+	golang.org/x/crypto v0.19.1-0.20240215133021-1a865804d5a8
 	golang.org/x/oauth2 v0.8.0
 )
 
@@ -101,7 +101,7 @@ require (
 	go.uber.org/zap v1.26.0 // indirect
 	golang.org/x/exp v0.0.0-20230315142452-642cacee5cc0 // indirect
 	golang.org/x/net v0.20.0 // indirect
-	golang.org/x/sys v0.16.0 // indirect
+	golang.org/x/sys v0.17.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect

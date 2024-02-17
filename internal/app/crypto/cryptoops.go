@@ -1,4 +1,4 @@
-package utils
+package crypto
 
 import (
 	"bytes"
@@ -26,15 +26,16 @@ func ComparePass(passHash []byte, plainPass string) bool {
 }
 
 // Если использовать плавающую позицию для вставки соли в хеш пароля
-func InsertSliceInPosition(original, insert []byte, position int) []byte {
+func InsertSliceInPosition(original, insert []byte, position int) int {
 	// Проверяем, что позиция в пределах допустимого диапазона для вставки
 	if position < 0 || position > len(original) {
-		return original // Возвращаем исходный срез, если позиция некорректна
+		return 0 // Возвращаем исходный срез, если позиция некорректна
 	}
+
 	// Создаем новый срез с достаточной емкостью
 	result := make([]byte, len(original)+len(insert))
-	at := copy(result, original[:position]) // Копируем первую часть до позиции вставки
-	at += copy(result[at:], insert)         // Вставляем второй срез
-	copy(result[at:], original[position:])  // Дополняем оставшейся частью первого среза
-	return result
+	at := copy(result, original[:position])       // Копируем первую часть до позиции вставки
+	at += copy(result[at:], insert)               // Вставляем второй срез
+	num := copy(result[at:], original[position:]) // Дополняем оставшейся частью первого среза
+	return num
 }

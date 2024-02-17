@@ -9,6 +9,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/opentracing/opentracing-go"
 	"net/http"
+	"sso/internal/app/crypto"
 	"sso/internal/app/interfaces"
 	"sso/internal/app/structs"
 	"sso/internal/app/utils"
@@ -135,7 +136,7 @@ func (e *Endpoint) PasswordResetValidateHandler(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, structs.ErrorResponse{Error: err.Error()})
 	}
 
-	hashedPwd := utils.HashArgon2(salt, pwd1, 32)
+	hashedPwd := crypto.HashArgon2(salt, pwd1, 32)
 
 	err = e.users.UpdateUserPassword(c, code, notification.UserID, hashedPwd)
 	if err != nil {

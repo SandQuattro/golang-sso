@@ -7,7 +7,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 	"log"
-	"sso/internal/app/utils"
+	"sso/internal/app/crypto"
 	"testing"
 )
 
@@ -33,7 +33,7 @@ func TestCreateUser(t *testing.T) {
 		t.Fail()
 	}
 
-	hashedPwd := utils.HashArgon2(salt, "12345", 32)
+	hashedPwd := crypto.HashArgon2(salt, "12345", 32)
 
 	arg := CreateUserParams{
 		Name:           "Test",

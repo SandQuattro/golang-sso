@@ -10,6 +10,7 @@ import (
 	"github.com/gurkankaymak/hocon"
 	"github.com/jmoiron/sqlx"
 	"github.com/opentracing/opentracing-go"
+	"sso/internal/app/crypto"
 	"sso/internal/app/errs"
 	"sso/internal/app/interfaces"
 	"sso/internal/app/repository"
@@ -100,7 +101,7 @@ func (s *UserService) CreateUser(ctx context.Context, createUser *structs.Create
 		return nil, err
 	}
 
-	hashedPwd := utils.HashArgon2(salt, createUser.Password, 32)
+	hashedPwd := crypto.HashArgon2(salt, createUser.Password, 32)
 
 	// err = s.r.Create(ctx, hashedPwd, createUser)
 	tx, err := s.db.Begin()

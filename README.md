@@ -55,6 +55,7 @@ Using Makefile:  make rebuild, restart, run, etc
 
 ### Future plans
 
+- move oauth to separate table, one user can have muptiple oauth accounts
 - add refresh token with db storage
 - uber zap logging
 - sliding salt position
