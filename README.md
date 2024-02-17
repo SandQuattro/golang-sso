@@ -49,9 +49,11 @@ Graceful shutdown
 
 ### **Alghoritms**:
 
-**Main alghorithm**: Argon2 with salt hashing alghorithm. Argon2 is a cryptographic hashing algorithm specifically used to hash passwords. It provides better protection against password cracking than other hashing algorithms like Bcrypt, Scrypt, etc...
+#### ARGON2
 
-**SHA-256**
+Argon2 with salt hashing alghorithm. Argon2 is a cryptographic hashing algorithm specifically used to hash passwords. It provides better protection against password cracking than other hashing algorithms like Bcrypt, Scrypt, etc...
+
+#### **SHA-256**
 
 The SHA-256 hashing algorithm (Secure Hash Algorithm 256-bit) is part of the SHA-2 family of cryptographic hash functions developed by the US National Institute of Standards and Technology (NIST). SHA-256 generates a unique 256-bit (32-byte) hash from data of any size, making it widely used in various security and cryptography systems such as digital signatures, blockchain, and data integrity verification.
 
@@ -68,7 +70,7 @@ Adding the calculated hash to the final result: Upon completion of the main loop
 
 Output of the final hash: After processing all the blocks, the final value consists of a concatenation of eight hash values (h0-h7), representing a 256-bit hash.
 
-### Features of SHA-256:
+**Features of SHA-256:**
 
 **Collision resistance**: There are currently no known effective attacks that can find two different data sets with the same SHA-256 hash.
 
@@ -76,6 +78,34 @@ Output of the final hash: After processing all the blocks, the final value consi
 **Avalanche effect**: Changing even one bit of the input results in a completely different and unrecognizable hash.
 **High Performance**: SHA-256 is designed to enable **fast hash computation** on a wide range of hardware.
 SHA-256 is the basis of many modern security technologies and is widely used in cryptography, including authentication protocols, blockchain systems, etc.
+
+#### **HMAC**
+
+HMAC (Hash-based Message Authentication Code) is a type of hash-based message authentication that provides data integrity and message authentication verification using a secret key. HMAC can be used with any iterative hash function such as MD5, SHA-1, SHA-256, etc. It is widely used in various security protocols and cryptographic applications.
+
+The basic operating principle of HMAC:
+HMAC combines a hash function with a secret key to create a unique signature, which is then appended to the message. The recipient, knowing the secret key, can repeat the signature generation process with the received message and compare the result with the signature sent along with the message to verify the authenticity and integrity of the data.
+
+HMAC Algorithm:
+The HMAC generation process consists of the following steps:
+
+Pre-preparing the key: If the length of the key is greater than the block width of the hash function being used, the key is reduced by hashing. If the key length is less, it is padded to the required length with '0' bits.
+
+Key Conversion: The resulting key is mixed with two constant values: ipad (inner padding) and opad (outer padding). This is done by bitwise XORing the key with each of these values. ipad and opad are predefined constants.
+
+Key ⊕ ipad: Internal key obtained by XORing the key from the ipad.
+Key ⊕ opad: Foreign key obtained by XORing the key with opad.
+Using a hash function:
+
+First stage: a message is added to the “internal key”, and the hash function is applied to the result: H((Key ⊕ ipad) || message).
+Second stage: the hash from the previous stage is added to the “foreign key”, and the hash function is again applied to the result: H((Key ⊕ opad) || H((Key ⊕ ipad) || message)).
+Conclusion: The result of the second stage is HMAC - message authentication code.
+
+HMAC Features and Benefits:
+Security: HMAC provides both data integrity and source authentication so that the recipient can be confident that the data has not been modified in transit and that the data came from the expected party.
+Flexibility: HMAC can be used with a variety of hash functions, making it a versatile security tool.
+Efficiency: HMAC does not require complex calculations or additional cryptographic operations (as in asymmetric encryption), making it relatively quick to implement and use.
+HMAC plays an important role in providing security and authentication in modern information systems and can be used in a variety of scenarios, from ensuring API security to verifying the authenticity of software updates and much more.
 
 ### Building
 
