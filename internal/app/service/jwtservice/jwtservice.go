@@ -1,9 +1,12 @@
 package jwtservice
 
 import (
+	"crypto"
+	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	logdoc "github.com/LogDoc-org/logdoc-go-appender/logrus"
 	"github.com/golang-jwt/jwt"
@@ -76,7 +79,7 @@ func (s *JwtService) CreateJwtToken(user *structs.User) (token string, response 
 	}
 
 	// Генерируем токен
-	token, err = jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(privateKey)
+	token, err = jwt.NewWithClaims(getSigningMethod(privateKey), claims).SignedString(privateKey)
 	if err != nil {
 		logger.Error("Ошибка генерации токена, ", err)
 		return
@@ -100,15 +103,30 @@ func (s *JwtService) RefreshJwtToken(ctx echo.Context, tokenStr string) (string,
 
 	// проверка токена
 	tok, err := jwt.Parse(strings.ReplaceAll(tokenStr, "Bearer ", ""), func(jwtToken *jwt.Token) (interface{}, error) {
-		if _, ok := jwtToken.Method.(*jwt.SigningMethodRSA); !ok {
-			return nil, fmt.Errorf("unexpected method: %s", jwtToken.Header["alg"])
+		switch publicKey.(type) {
+		case *rsa.PublicKey:
+			if _, ok := jwtToken.Method.(*jwt.SigningMethodRSA); !ok {
+				return nil, fmt.Errorf("unexpected method: %s", jwtToken.Header["alg"])
+			}
+		case ed25519.PublicKey:
+			if _, ok := jwtToken.Method.(*jwt.SigningMethodEd25519); !ok {
+				return nil, fmt.Errorf("unexpected method: %s", jwtToken.Header["alg"])
+			}
+		default:
+			logger.Error("Неизвестный тип открытого ключа")
+			return "", fmt.Errorf("неизвестный тип открытого ключа")
 		}
+
 		return publicKey, nil
 	})
-
-	if tok == nil || tok.Claims == nil {
+	if err != nil {
 		logger.Error("Ошибка парсинга jwt токена, ", err)
 		return "", err
+	}
+
+	if tok == nil || tok.Claims == nil {
+		logger.Error("Ошибка парсинга jwt токена")
+		return "", errors.New("ошибка парсинга jwt токена")
 	}
 
 	claims, ok := tok.Claims.(jwt.MapClaims)
@@ -225,7 +243,7 @@ func (s *JwtService) recreateJwtTokenWithClaims(claims jwt.MapClaims) (string, e
 	claims["exp"] = time.Now().Add(time.Minute * time.Duration(s.config.GetInt("jwt.expiredAfterMinutes"))).Unix()
 
 	// Генерируем токен
-	token, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(privateKey)
+	token, err := jwt.NewWithClaims(getSigningMethod(privateKey), claims).SignedString(privateKey)
 	if err != nil {
 		logger.Error("Ошибка генерации jwt токена, ", err)
 		return "", err
@@ -234,7 +252,7 @@ func (s *JwtService) recreateJwtTokenWithClaims(claims jwt.MapClaims) (string, e
 	return token, nil
 }
 
-func readPrivatePEMKey() (*rsa.PrivateKey, error) {
+func readPrivatePEMKey() (crypto.PrivateKey, error) {
 	logger := logdoc.GetLogger()
 
 	// Читаем приватный ключ
@@ -249,21 +267,21 @@ func readPrivatePEMKey() (*rsa.PrivateKey, error) {
 		panic(err)
 	}
 
-	var privateKey *rsa.PrivateKey
-	privateKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+	var privateKey crypto.PrivateKey
+	privateKey, err = x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
 		logger.Warn("Ошибка парсинга приватного ключа, ", err)
-		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		privateKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
 		if err != nil {
 			logger.Error("Ошибка парсинга приватного ключа, ", err)
 			return nil, err
 		}
-		return key.(*rsa.PrivateKey), err
+		return privateKey, err
 	}
 	return privateKey, nil
 }
 
-func readPublicPEMKey() *rsa.PublicKey {
+func readPublicPEMKey() crypto.PublicKey {
 	logger := logdoc.GetLogger()
 
 	// Читаем открытый ключ
@@ -284,10 +302,16 @@ func readPublicPEMKey() *rsa.PublicKey {
 		return nil
 	}
 
-	switch t := publicKey.(type) {
-	case *rsa.PublicKey:
-		return t
+	return publicKey
+}
+
+func getSigningMethod(privateKey any) jwt.SigningMethod {
+	switch privateKey.(type) {
+	case *rsa.PrivateKey:
+		return jwt.SigningMethodRS256
+	case ed25519.PrivateKey:
+		return jwt.SigningMethodEdDSA
 	default:
-		panic("unknown type of public key")
+		return nil
 	}
 }
