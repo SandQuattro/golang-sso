@@ -20,7 +20,7 @@ func Connect(config *hocon.Config, dbPass string) *sqlx.DB {
 	)
 	db, err := sqlx.Connect(config.GetString("db.driver"), psqlInfo)
 	if err != nil {
-		logger.Fatal(fmt.Sprintf("Error connecting database: %s", config.GetString("db.driver")))
+		logger.Fatal(fmt.Sprintf("Error connecting database: %s", config.GetString("db.name")))
 	}
 	err = db.Ping()
 	if err != nil {
