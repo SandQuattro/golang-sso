@@ -37,15 +37,12 @@ Can be deployed to **Docker**, Dockerfile included
 
 ### Middlewares, Features
 
-Rate limiter middleware, rate limit: 20 rps/sec, burst: 20 (maximum number of requests to pass at the same moment)
-
-Teler WAF (Intrusion Detection Middleware) https://github.com/kitabisa/teler-waf.git
-
-LogDoc logging subsystem, ClickHouse-based high performance logging collector https://logdoc.org/en/
-
-pprof profiling in debug mode
-
-Graceful shutdown
+- RSA, ECDSA, Ed25519 keys support (see [KEYS.md](conf/keys/KEYS.md) )
+- Rate limiter middleware, rate limit: 20 rps/sec, burst: 20 (maximum number of requests to pass at the same moment)
+- Teler WAF (Intrusion Detection Middleware) https://github.com/kitabisa/teler-waf.git
+- LogDoc logging subsystem, ClickHouse-based high performance logging collector https://logdoc.org/en/
+- pprof profiling in debug mode
+- Graceful shutdown
 
 ### **Alghoritms**:
 
@@ -72,11 +69,10 @@ Output of the final hash: After processing all the blocks, the final value consi
 
 **Features of SHA-256:**
 
-**Collision resistance**: There are currently no known effective attacks that can find two different data sets with the same SHA-256 hash.
-
-**Determinism**: For the same input data, SHA-256 always produces the same hash.
-**Avalanche effect**: Changing even one bit of the input results in a completely different and unrecognizable hash.
-**High Performance**: SHA-256 is designed to enable **fast hash computation** on a wide range of hardware.
+- **Collision resistance**: There are currently no known effective attacks that can find two different data sets with the same SHA-256 hash.
+- **Determinism**: For the same input data, SHA-256 always produces the same hash.
+- **Avalanche effect**: Changing even one bit of the input results in a completely different and unrecognizable hash.
+- **High Performance**: SHA-256 is designed to enable **fast hash computation** on a wide range of hardware.
 SHA-256 is the basis of many modern security technologies and is widely used in cryptography, including authentication protocols, blockchain systems, etc.
 
 #### **HMAC**
