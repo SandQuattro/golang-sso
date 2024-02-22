@@ -103,6 +103,30 @@ Flexibility: HMAC can be used with a variety of hash functions, making it a vers
 Efficiency: HMAC does not require complex calculations or additional cryptographic operations (as in asymmetric encryption), making it relatively quick to implement and use.
 HMAC plays an important role in providing security and authentication in modern information systems and can be used in a variety of scenarios, from ensuring API security to verifying the authenticity of software updates and much more.
 
+#### ARGON2 VS SHA256
+**Argon2**
+
+Argon2 is a Password Hashing Competition winner designed for secure password hashing. 
+
+Unlike SHA-256, Argon2 is designed to protect against brute force attacks and attacks using specialized hardware such as ASICs and FPGAs. 
+Argon2 has three variants: Argon2i, Argon2d and Argon2id (a hybrid of the first two).
+
+Main characteristics of Argon2:
+
+- **Memory Cost**: Argon2 requires a significant amount of memory to execute, making it difficult to process hashes in a massively parallel manner.
+- **Configuring execution time and parallelism**: provides the ability to configure execution time and the number of parallel threads, which allows you to adapt it to specific hardware.
+- **Protect against attacks using force and specialized hardware**: Time and memory costs make Argon2 difficult to attack.
+
+**Conclusions**
+
+SHA-256 is good for ensuring data integrity and quickly generating cryptographic hashes, but is not the best choice 
+for hashing passwords due to its speed and ability to be easily cracked by force.
+
+Argon2 is the gold standard for password hashing, offering high security due to its memory overhead and configurability.
+The choice between them depends on the context of use: 
+- for hashing passwords and protecting user information, Argon2 is the best choice, 
+- for signing data and ensuring its integrity, SHA-256 is the best choice.
+
 ### Building
 
 Using Makefile:  make rebuild, restart, run, etc
