@@ -315,3 +315,50 @@ func getSigningMethod(privateKey any) jwt.SigningMethod {
 		return nil
 	}
 }
+
+func decodeKeyType(key any) string {
+	switch key.(type) {
+	case *rsa.PrivateKey:
+		return "rsa"
+	case ed25519.PrivateKey:
+		return "ed25519"
+	default:
+		return "unknown"
+	}
+}
+
+// DER keys format
+// https://www.openssl.org/docs/man1.1.1/man1/pkcs8.html
+func readPublicDERKey(der []byte) crypto.PublicKey {
+	keyData, err := x509.ParsePKIXPublicKey(der)
+	if err != nil {
+		return nil
+	}
+
+	switch keyData.(type) {
+	case *rsa.PublicKey:
+		return keyData.(*rsa.PublicKey)
+	case ed25519.PublicKey:
+		return keyData.(ed25519.PublicKey)
+	default:
+		return nil
+	}
+
+}
+
+func readPrivateDERKey(der []byte) crypto.PrivateKey {
+	keyData, err := x509.ParsePKCS8PrivateKey(der)
+	if err != nil {
+		return nil
+	}
+
+	switch keyData.(type) {
+	case *rsa.PrivateKey:
+		return keyData.(*rsa.PrivateKey)
+	case ed25519.PrivateKey:
+		return keyData.(ed25519.PrivateKey)
+	default:
+		return nil
+	}
+
+}
