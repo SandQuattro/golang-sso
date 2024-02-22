@@ -113,11 +113,11 @@ Using Makefile:  make rebuild, restart, run, etc
 
 ### Future plans
 
-- automatic keys rotation
-- key length 2048-bit longer key 4096-bit
-- move oauth to separate table, one user can have multiple oauth accounts
-- add refresh token with db storage
-- uber zap logging
-- sliding salt position
-- rereading config using SIGHUP signal
-- gRPC other services integration
+- [ ] automatic keys rotation
+- [x] key length 2048-bit longer key 4096-bit
+- [ ] move oauth to separate table, one user can have multiple oauth accounts
+- [ ] add refresh token with db storage
+- [ ] uber zap logging
+- [ ] sliding salt position
+- [ ] rereading config using SIGHUP signal
+- [ ] gRPC other services integration
