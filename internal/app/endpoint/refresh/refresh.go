@@ -44,7 +44,7 @@ func (refresh *Endpoint) RefreshHandler(ctx echo.Context) error {
 		default:
 			logger.Error(fmt.Errorf("refresh failed, reason: %s", err.Error()))
 			logger.Info("<< RefreshHandler done.")
-			return ctx.JSON(http.StatusForbidden, structs.ErrorResponse{Error: err.Error()})
+			return ctx.JSON(http.StatusForbidden, structs.ErrorResponse{Code: 24, Error: err.Error()})
 		}
 	}
 

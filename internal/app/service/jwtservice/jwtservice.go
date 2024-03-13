@@ -119,8 +119,22 @@ func (s *JwtService) RefreshJwtToken(ctx echo.Context, tokenStr string) (string,
 
 		return publicKey, nil
 	})
-	if err != nil {
-		logger.Error("Ошибка парсинга jwt токена, ", err)
+
+	var validationError *jwt.ValidationError
+	if err != nil && errors.As(err, &validationError) {
+		if err.(*jwt.ValidationError).Errors == jwt.ValidationErrorExpired {
+			logger.Warn("Token expired")
+		} else {
+			logger.Error(fmt.Sprintf("Token verification error: %s", err.Error()))
+			taskerr := utils.CreateTask(s.config, span, utils.TypeTelegramDelivery, "unknown", "unknown", -1,
+				fmt.Sprintf("Attention required! Error in RefreshJwtToken service, %s", err.Error()))
+			if taskerr != nil {
+				return "", taskerr
+			}
+			return "", err
+		}
+	} else if err != nil {
+		logger.Error("Ошибка проверки jwt токена, ", err)
 		return "", err
 	}
 
@@ -306,6 +320,7 @@ func readPublicPEMKey() crypto.PublicKey {
 }
 
 func getSigningMethod(privateKey any) jwt.SigningMethod {
+
 	switch privateKey.(type) {
 	case *rsa.PrivateKey:
 		return jwt.SigningMethodRS256
@@ -313,17 +328,6 @@ func getSigningMethod(privateKey any) jwt.SigningMethod {
 		return jwt.SigningMethodEdDSA
 	default:
 		return nil
-	}
-}
-
-func decodeKeyType(key any) string {
-	switch key.(type) {
-	case *rsa.PrivateKey:
-		return "rsa"
-	case ed25519.PrivateKey:
-		return "ed25519"
-	default:
-		return "unknown"
 	}
 }
 
