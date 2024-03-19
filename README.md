@@ -134,7 +134,7 @@ Using Makefile:  make rebuild, restart, run, etc
 ### Future plans
 
 - [x] added reading keys from DER format, documentation
-- [ ] automatic keys rotation
+- [x] automatic keys rotation
 - [x] key length 2048-bit longer key 4096-bit
 - [ ] move oauth to separate table, one user can have multiple oauth accounts
 - [ ] add refresh token with db storage
