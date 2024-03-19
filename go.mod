@@ -4,21 +4,23 @@ go 1.20
 
 require (
 	github.com/LogDoc-org/logdoc-go-appender v0.0.19
+	github.com/SandQuattro/jwt-verification v0.0.13
 	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/golang-migrate/migrate/v4 v4.16.2
 	github.com/gurkankaymak/hocon v1.2.15
 	github.com/hibiken/asynq v0.24.1
 	github.com/jmoiron/sqlx v1.3.5
 	github.com/kitabisa/teler-waf v1.2.4
-	github.com/klauspost/cpuid/v2 v2.2.4
 	github.com/labstack/echo-contrib v0.15.0
 	github.com/labstack/echo/v4 v4.10.2
 	github.com/labstack/gommon v0.4.0
 	github.com/lib/pq v1.10.7
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/prometheus/client_golang v1.14.0
-	github.com/sirupsen/logrus v1.9.2
-	github.com/stretchr/testify v1.8.2
+	github.com/redis/go-redis/v9 v9.5.1
+	github.com/sirupsen/logrus v1.9.3
+	github.com/stretchr/testify v1.8.4
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	golang.org/x/crypto v0.19.1-0.20240215133021-1a865804d5a8
 	golang.org/x/oauth2 v0.8.0
@@ -81,7 +83,6 @@ require (
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.40.0 // indirect
 	github.com/prometheus/procfs v0.9.0 // indirect
-	github.com/redis/go-redis/v9 v9.0.3 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect

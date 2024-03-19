@@ -124,15 +124,15 @@ func (e *Endpoint) EmailVerifyHandler(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, structs.ErrorResponse{Error: err.Error()})
 	}
 
-	t, _, err := e.jwt.CreateJwtToken(user)
-	if err != nil || t == "" {
+	t, err := e.jwt.CreateJwtToken(user)
+	if err != nil || t == nil {
 		logger.Error(fmt.Errorf("creation jwt failed, reason: %s", err.Error()))
 		logger.Info("<< EmailVerifyHandler done.")
 		return echo.NewHTTPError(http.StatusForbidden, structs.ErrorResponse{Error: err.Error()})
 	}
 
 	res := &structs.AuthRes{
-		Token: t,
+		Token: t["access_token"].(string),
 	}
 
 	logger.Info("<< EmailVerifyHandler done")

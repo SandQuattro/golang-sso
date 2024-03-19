@@ -134,8 +134,8 @@ func (e *Endpoint) GoogleAuthLoginHandler(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, "Error login as google user")
 	}
 
-	t, _, err := e.jwt.CreateJwtToken(u)
-	if err != nil || t == "" {
+	t, err := e.jwt.CreateJwtToken(u)
+	if err != nil || t == nil {
 		logger.Error(fmt.Errorf("login failed, reason: %s", err.Error()))
 		logger.Info("<< LoginHandler done.")
 		span.SetTag("error", true)
@@ -143,7 +143,7 @@ func (e *Endpoint) GoogleAuthLoginHandler(ctx echo.Context) error {
 	}
 
 	res := &structs.AuthRes{
-		Token: t,
+		Token: t["access_token"].(string),
 	}
 
 	// объединяем данные незареганного пользователя и пользователя VK

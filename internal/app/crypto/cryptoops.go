@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"github.com/klauspost/cpuid/v2"
 	"golang.org/x/crypto/argon2"
+	"runtime"
 )
 
 func Hash256(data string) string {
@@ -14,28 +14,27 @@ func Hash256(data string) string {
 }
 
 func HashArgon2(salt []byte, data string, keyLen uint32) []byte {
-	hashed := argon2.IDKey([]byte(data), salt, 1, 64*1024, uint8(cpuid.CPU.LogicalCores), keyLen)
+	hashed := argon2.IDKey([]byte(data), salt, 1, 64*1024, uint8(runtime.NumCPU()), keyLen)
 	return append(salt, hashed...)
 }
 
 func ComparePass(passHash []byte, plainPass string) bool {
 	salt := passHash[0:8]
-	hashed := argon2.IDKey([]byte(plainPass), salt, 1, 64*1024, uint8(cpuid.CPU.LogicalCores), uint32(len(passHash)-8))
+	hashed := argon2.IDKey([]byte(plainPass), salt, 1, 64*1024, uint8(runtime.NumCPU()), uint32(len(passHash)-8))
 
 	return bytes.Equal(hashed, passHash[8:])
 }
 
-// Если использовать плавающую позицию для вставки соли в хеш пароля
-func InsertSliceInPosition(original, insert []byte, position int) int {
-	// Проверяем, что позиция в пределах допустимого диапазона для вставки
+// InsertSliceInPosition Если использовать плавающую позицию для вставки соли в хеш пароля
+func InsertSliceInPosition(original, insert []byte, position int) []byte {
 	if position < 0 || position > len(original) {
-		return 0 // Возвращаем исходный срез, если позиция некорректна
+		return original // Return the original slice if the position is incorrect
 	}
 
-	// Создаем новый срез с достаточной емкостью
 	result := make([]byte, len(original)+len(insert))
-	at := copy(result, original[:position])       // Копируем первую часть до позиции вставки
-	at += copy(result[at:], insert)               // Вставляем второй срез
-	num := copy(result[at:], original[position:]) // Дополняем оставшейся частью первого среза
-	return num
+	at := copy(result, original[:position])
+	at += copy(result[at:], insert)
+	copy(result[at:], original[position:])
+
+	return result
 }

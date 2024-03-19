@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	logdoc "github.com/LogDoc-org/logdoc-go-appender/logrus"
 	"github.com/gurkankaymak/hocon"
@@ -9,6 +10,7 @@ import (
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"sso/internal/app/endpoint/auth/google"
 	"sso/internal/app/endpoint/auth/mailru"
@@ -48,12 +50,12 @@ type App struct {
 
 var logger *logrus.Logger
 
-func New(config *hocon.Config, port string, db *sqlx.DB) (*App, error) {
+func New(ctx context.Context, config *hocon.Config, port string, rdb *redis.Client, db *sqlx.DB) (*App, error) {
 	logger = logdoc.GetLogger()
 
 	a := App{port: port, config: config, db: db}
 
-	a.jwt = jwtservice.New(config, db)
+	a.jwt = jwtservice.New(ctx, config, rdb, db)
 	a.u = userservice.New(config, db)
 
 	a.root = root.New()

@@ -8,7 +8,7 @@ import (
 	"sso/internal/pkg/app"
 )
 
-func GraceShutdown(app *app.App) {
+func GraceShutdown(ctx context.Context, app *app.App) {
 	logger := logdoc.GetLogger()
 	// Используем буферизированный канал, как рекомендовано внутри signal.Notify функции
 	quit := make(chan os.Signal, 1)
@@ -18,8 +18,6 @@ func GraceShutdown(app *app.App) {
 	<-quit
 
 	// Получили SIGINT (0x2), выполняем grace shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	logger.Warn("Gracefully shutdown server...")
 	if err := app.Echo.Shutdown(ctx); err != nil {
 		logger.Error("gracefully shutdown error")

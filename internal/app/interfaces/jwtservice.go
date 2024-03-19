@@ -1,13 +1,20 @@
 package interfaces
 
 import (
-	"github.com/golang-jwt/jwt"
+	"crypto"
 	"github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
 	"sso/internal/app/structs"
 )
 
 type JwtService interface {
+	CreateJwtToken(user *structs.User) (map[string]interface{}, error)
 	RefreshJwtToken(ctx echo.Context, token string) (string, error)
-	CreateJwtToken(user *structs.User) (token string, response *structs.ResponseUser, err error)
-	JwtClaims(tokenStr string) (jwt.MapClaims, error)
+	GenerateRSAKeys(bits int) (crypto.PublicKey, crypto.PrivateKey, error)
+	ConvertRSAPublicKeyToPEM(publicKey crypto.PublicKey) ([]byte, error)
+	ConvertRSAPrivateKeyToPEM(privateKey crypto.PrivateKey) ([]byte, error)
+	GenerateED25519Keys() (crypto.PublicKey, crypto.PrivateKey, error)
+	ConvertPublicKeyToPEM(key crypto.PublicKey) ([]byte, error)
+	ConvertPrivateKeyToPEM(key crypto.PrivateKey) ([]byte, error)
+	GetCurrentPublicKeyFromRedis(rdb *redis.Client) string
 }

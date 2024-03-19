@@ -127,8 +127,8 @@ func (e *Endpoint) MailRuAuthLoginHandler(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, "Error login as MailRu user")
 	}
 
-	t, _, err := e.jwt.CreateJwtToken(u)
-	if err != nil || t == "" {
+	t, err := e.jwt.CreateJwtToken(u)
+	if err != nil || t == nil {
 		logger.Error(fmt.Errorf("login failed, reason: %s", err.Error()))
 		logger.Info("<< MailRuAuthLoginHandler done.")
 		span.SetTag("error", true)
@@ -136,7 +136,7 @@ func (e *Endpoint) MailRuAuthLoginHandler(ctx echo.Context) error {
 	}
 
 	res := &structs.AuthRes{
-		Token: t,
+		Token: t["access_token"].(string),
 	}
 
 	// объединяем данные незареганного пользователя и пользователя VK

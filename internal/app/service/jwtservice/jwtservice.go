@@ -1,24 +1,31 @@
 package jwtservice
 
 import (
+	"bytes"
+	"context"
 	"crypto"
 	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	logdoc "github.com/LogDoc-org/logdoc-go-appender/logrus"
-	"github.com/golang-jwt/jwt"
+	jwtverification "github.com/SandQuattro/jwt-verification"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gurkankaymak/hocon"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo-contrib/jaegertracing"
 	"github.com/labstack/echo/v4"
 	"github.com/opentracing/opentracing-go"
+	"github.com/redis/go-redis/v9"
+	localcrypto "sso/internal/app/crypto"
 	"sso/internal/app/utils"
+	"strconv"
 
 	"os"
-	"sso/internal/app/errs"
 	"sso/internal/app/repository"
 	"sso/internal/app/structs"
 	"strings"
@@ -27,8 +34,10 @@ import (
 )
 
 type JwtService struct {
-	config *hocon.Config
-	r      repository.UserRepository
+	config     *hocon.Config
+	rdb        *redis.Client
+	privateKey *crypto.PrivateKey
+	r          repository.UserRepository
 }
 
 type SubscriptionInvalidatedError struct{}
@@ -39,21 +48,113 @@ func (m SubscriptionInvalidatedError) Error() string {
 
 var SubscriptionInvalidated = SubscriptionInvalidatedError{}
 
-func New(config *hocon.Config, db *sqlx.DB) *JwtService {
+func New(ctx context.Context, config *hocon.Config, rdb *redis.Client, db *sqlx.DB) *JwtService {
 	urepo := repository.New(db)
-	return &JwtService{config: config, r: *urepo}
+
+	jwtService := &JwtService{config: config, rdb: rdb, r: *urepo}
+
+	jwtService.GenerateKeys(rdb, config.GetInt("jwt.type"), config.GetString("jwt.algo"))
+
+	if rdb != nil {
+		ticker := time.NewTicker(1 * time.Minute)
+
+		go func() {
+			logger := logdoc.GetLogger()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case t := <-ticker.C:
+					jwtService.GenerateKeys(rdb, config.GetInt("jwt.type"), config.GetString("jwt.algo"))
+					logger.Warn("Keys rotation completed at", t)
+				}
+			}
+		}()
+	}
+
+	return jwtService
 }
 
-func (s *JwtService) CreateJwtToken(user *structs.User) (token string, response *structs.ResponseUser, err error) {
-	defer func() {
-		err = errs.WrapIfErr("Ошибка формирования jwt токена", err)
-	}()
+func (s *JwtService) GenerateKeys(rdb *redis.Client, keyType int, algo string) {
+	logger := logdoc.GetLogger()
+	logger.Info("Rotating keys...")
 
+	var err error
+	var public crypto.PublicKey
+	var private crypto.PrivateKey
+
+	if algo == "ED25519" {
+		public, private, err = s.GenerateED25519Keys()
+		if err != nil {
+			logger.Fatalf("Failed to generate public key: %v", err)
+		}
+	} else if algo == "RSA" {
+		public, private, err = s.GenerateRSAKeys(4096)
+		if err != nil {
+			logger.Fatalf("Failed to generate public key: %v", err)
+		}
+	} else {
+		logger.Fatalf("Invalid algorithm")
+	}
+
+	s.privateKey = &private
+
+	if keyType == jwtverification.PEM {
+		pemPublic, err := s.ConvertPublicKeyToPEM(public)
+		if err != nil {
+			logger.Fatalf("Failed to convert public key to PEM: %v", err)
+		}
+
+		pubKeyBase := base64.StdEncoding.EncodeToString(pemPublic)
+
+		err = rdb.LPush(context.Background(), "key:pem", pubKeyBase).Err()
+		if err != nil {
+			logger.Fatalf("Failed to store public key in redis: %v", err)
+		}
+
+		// Опционально, установить ограничение на размер истории ключей
+		rdb.LTrim(context.Background(), "key:pem", 0, 9) // Сохраняем последние 10 ключей
+	} else if keyType == jwtverification.DER {
+		derPublic, err := x509.MarshalPKIXPublicKey(public)
+		if err != nil {
+			logger.Fatalf("Failed to convert public key to DER: %v", err)
+		}
+		base64.StdEncoding.EncodeToString(derPublic)
+
+		err = rdb.LPush(context.Background(), "key:der", derPublic).Err()
+		if err != nil {
+			logger.Fatalf("Failed to store public key in redis: %v", err)
+		}
+
+		// Опционально, установить ограничение на размер истории ключей
+		rdb.LTrim(context.Background(), "key:der", 0, 9) // Сохраняем последние 10 ключей
+	} else {
+		logger.Fatalf("Invalid key type")
+	}
+
+	logger.Info("Keys rotation completed.")
+}
+
+func generateRefreshToken(user *structs.User) (string, int64, error) {
+	refreshToken := localcrypto.Hash256(strconv.Itoa(user.ID) + user.AuthSystem + user.Email)
+	refreshTokenExpiresIn := time.Now().Add(time.Hour*24*time.Duration(7)).Unix() - time.Now().Unix()
+	return refreshToken, refreshTokenExpiresIn, nil
+}
+
+func (s *JwtService) CreateJwtToken(user *structs.User) (map[string]interface{}, error) {
 	logger := logdoc.GetLogger()
 
-	privateKey, err := readPrivatePEMKey()
-	if err != nil {
-		return "", nil, err
+	var err error
+	var privateKey crypto.PrivateKey
+
+	if s.privateKey != nil {
+		privateKey = *s.privateKey
+	} else {
+		privateKey, err = readPrivatePEMKey()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Устанавливаем параметры токена
@@ -65,6 +166,7 @@ func (s *JwtService) CreateJwtToken(user *structs.User) (token string, response 
 		fio = ""
 	}
 
+	expirationTime := time.Now().Add(time.Minute * time.Duration(s.config.GetInt("jwt.expiredAfterMinutes")))
 	claims := jwt.MapClaims{
 		"id":  user.ID,
 		"sub": user.Sub,
@@ -73,24 +175,32 @@ func (s *JwtService) CreateJwtToken(user *structs.User) (token string, response 
 		"iss": s.config.GetString("jwt.issuer"),
 		"aud": s.config.GetString("jwt.audience"),
 		"iat": time.Now().Unix(),
-		"exp": time.Now().Add(time.Minute * time.Duration(s.config.GetInt("jwt.expiredAfterMinutes"))).Unix(),
+		"exp": expirationTime.Unix(),
 		"adr": user.Email,
 		"rol": user.Role,
 	}
 
 	// Генерируем токен
-	token, err = jwt.NewWithClaims(getSigningMethod(privateKey), claims).SignedString(privateKey)
+	token, err := jwt.NewWithClaims(getSigningMethod(privateKey), claims).SignedString(privateKey)
 	if err != nil {
 		logger.Error("Ошибка генерации токена, ", err)
-		return
+		return nil, err
 	}
 
-	response = &structs.ResponseUser{
-		ID:    user.ID,
-		Email: user.Email,
+	// Генерируем refresh токен и время его действия
+	refreshToken, refreshTokenExpiresIn, err := generateRefreshToken(user)
+	if err != nil {
+		logger.Error("Ошибка генерации refresh токена, ", err)
+		return nil, err
 	}
 
-	return token, response, nil
+	return map[string]interface{}{
+		"access_token":             token,
+		"token_type":               "Bearer",
+		"expires_in":               expirationTime.Unix() - time.Now().Unix(),
+		"refresh_token":            refreshToken,
+		"refresh_token_expires_in": refreshTokenExpiresIn,
+	}, nil
 }
 
 func (s *JwtService) RefreshJwtToken(ctx echo.Context, tokenStr string) (string, error) {
@@ -118,11 +228,13 @@ func (s *JwtService) RefreshJwtToken(ctx echo.Context, tokenStr string) (string,
 		}
 
 		return publicKey, nil
-	})
-
-	var validationError *jwt.ValidationError
-	if err != nil && errors.As(err, &validationError) {
-		if err.(*jwt.ValidationError).Errors == jwt.ValidationErrorExpired {
+	},
+		jwt.WithExpirationRequired(),
+		jwt.WithIssuedAt(),
+		jwt.WithIssuer(s.config.GetString("jwt.issuer")),
+		jwt.WithAudience(s.config.GetString("jwt.audience")))
+	if err != nil {
+		if errors.Is(err, jwt.ErrTokenExpired) {
 			logger.Warn("Token expired")
 		} else {
 			logger.Error(fmt.Sprintf("Token verification error: %s", err.Error()))
@@ -146,14 +258,6 @@ func (s *JwtService) RefreshJwtToken(ctx echo.Context, tokenStr string) (string,
 	claims, ok := tok.Claims.(jwt.MapClaims)
 	if !ok {
 		return "", fmt.Errorf("invalid token, claims parse error: %w", err)
-	}
-
-	if !claims.VerifyIssuer(s.config.GetString("jwt.issuer"), true) {
-		return "", fmt.Errorf("token issuer error")
-	}
-
-	if !claims.VerifyAudience(s.config.GetString("jwt.audience"), true) {
-		return "", fmt.Errorf("token audience error")
 	}
 
 	c := opentracing.ContextWithSpan(ctx.Request().Context(), span)
@@ -196,60 +300,19 @@ func (s *JwtService) RefreshJwtToken(ctx echo.Context, tokenStr string) (string,
 	return token, nil
 }
 
-func (s *JwtService) JwtClaims(tokenStr string) (jwt.MapClaims, error) {
-	logger := logdoc.GetLogger()
-	claims, isValid, err := s.ValidateToken(tokenStr)
-	if !isValid {
-		logger.Error("JwtClaims getting failed")
-		return nil, err
-	}
-	return claims, nil
-}
-
-func (s *JwtService) ValidateToken(tokenStr string) (jwt.MapClaims, bool, error) {
-	logger := logdoc.GetLogger()
-
-	publicKey := readPublicPEMKey()
-
-	// проверка токена
-	tok, err := jwt.Parse(strings.ReplaceAll(tokenStr, "Bearer ", ""), func(jwtToken *jwt.Token) (interface{}, error) {
-		if _, ok := jwtToken.Method.(*jwt.SigningMethodRSA); !ok {
-			return nil, fmt.Errorf("unexpected method: %s", jwtToken.Header["alg"])
-		}
-		return publicKey, nil
-	})
-
-	if err != nil {
-		logger.Error("Ошибка формирования jwt токена, ", err)
-		return nil, false, err
-	}
-
-	claims, ok := tok.Claims.(jwt.MapClaims)
-	if !ok || !tok.Valid {
-		return nil, false, fmt.Errorf("invalid token, claims parse error: %w", err)
-	}
-
-	if !claims.VerifyExpiresAt(time.Now().Unix(), true) {
-		return nil, false, fmt.Errorf("token expired")
-	}
-
-	if !claims.VerifyIssuer(s.config.GetString("jwt.issuer"), true) {
-		return nil, false, fmt.Errorf("token issuer error")
-	}
-
-	if !claims.VerifyAudience(s.config.GetString("jwt.audience"), true) {
-		return nil, false, fmt.Errorf("token audience error")
-	}
-
-	return claims, true, nil
-}
-
 func (s *JwtService) recreateJwtTokenWithClaims(claims jwt.MapClaims) (string, error) {
 	logger := logdoc.GetLogger()
 
-	privateKey, err := readPrivatePEMKey()
-	if err != nil {
-		return "", err
+	var privateKey crypto.PrivateKey
+	var err error
+
+	if s.privateKey != nil {
+		privateKey = *s.privateKey
+	} else {
+		privateKey, err = readPrivatePEMKey()
+		if err != nil {
+			return "", err
+		}
 	}
 
 	// Меняем даты выдачи и expire
@@ -264,6 +327,120 @@ func (s *JwtService) recreateJwtTokenWithClaims(claims jwt.MapClaims) (string, e
 	}
 
 	return token, nil
+}
+
+func (s *JwtService) GenerateRSAKeys(bits int) (crypto.PublicKey, crypto.PrivateKey, error) {
+	// Генерация приватного ключа
+	privateKey, err := rsa.GenerateKey(rand.Reader, bits)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	publicKey := &privateKey.PublicKey
+
+	return publicKey, privateKey, err
+}
+
+func (s *JwtService) ConvertRSAPublicKeyToPEM(publicKey crypto.PublicKey) ([]byte, error) {
+
+	// Преобразование публичного ключа в формат ASN.1 PKCS#1 DER
+	publicKeyDER, err := x509.MarshalPKIXPublicKey(publicKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// Создание блока PEM для публичного ключа
+	publicKeyBlock := &pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: publicKeyDER,
+	}
+
+	var pubKey bytes.Buffer
+	err = pem.Encode(&pubKey, publicKeyBlock)
+
+	return pubKey.Bytes(), nil
+}
+
+func (s *JwtService) ConvertRSAPrivateKeyToPEM(privateKey crypto.PrivateKey) ([]byte, error) {
+	// Преобразование приватного ключа в формат ASN.1 PKCS#8 DER
+	privateKeyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// Создание блока PEM для приватного ключа
+	privateKeyBlock := &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: privateKeyDER,
+	}
+
+	var privKey bytes.Buffer
+	err = pem.Encode(&privKey, privateKeyBlock)
+
+	return privKey.Bytes(), nil
+}
+
+func (s *JwtService) GenerateED25519Keys() (crypto.PublicKey, crypto.PrivateKey, error) {
+	// Генерация приватного ключа
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, nil, err
+	}
+	return publicKey, privateKey, nil
+}
+
+func (s *JwtService) ConvertPublicKeyToPEM(key crypto.PublicKey) ([]byte, error) {
+	publicKeyDER, err := x509.MarshalPKIXPublicKey(key)
+	if err != nil {
+		return nil, err
+	}
+
+	publicKeyBlock := &pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: publicKeyDER,
+	}
+
+	var pubKey bytes.Buffer
+	err = pem.Encode(&pubKey, publicKeyBlock)
+	if err != nil {
+		return nil, err
+	}
+
+	return pubKey.Bytes(), nil
+}
+
+func (s *JwtService) ConvertPrivateKeyToPEM(key crypto.PrivateKey) ([]byte, error) {
+	privateKeyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return nil, err
+	}
+
+	privateKeyBlock := &pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: privateKeyDER,
+	}
+	var privateKey bytes.Buffer
+	err = pem.Encode(&privateKey, privateKeyBlock)
+	if err != nil {
+		return nil, err
+	}
+
+	return privateKey.Bytes(), nil
+}
+
+func (s *JwtService) GetCurrentPublicKeyFromRedis(rdb *redis.Client) string {
+	logger := logdoc.GetLogger()
+	// Используем LINDEX с индексом 0 для получения последнего добавленного ключа
+	key, err := rdb.LIndex(context.Background(), "keys:pem", 0).Result()
+	if err != nil {
+		logger.Fatalf("Failed to get current public key: %v", err)
+	}
+	decodedString, err := base64.StdEncoding.DecodeString(key)
+	if err != nil {
+		return ""
+	}
+
+	return string(decodedString)
 }
 
 func readPrivatePEMKey() (crypto.PrivateKey, error) {
@@ -320,7 +497,6 @@ func readPublicPEMKey() crypto.PublicKey {
 }
 
 func getSigningMethod(privateKey any) jwt.SigningMethod {
-
 	switch privateKey.(type) {
 	case *rsa.PrivateKey:
 		return jwt.SigningMethodRS256

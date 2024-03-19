@@ -1,6 +1,9 @@
 package crypto
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestHash256(t *testing.T) {
 	testCases := []struct {
@@ -66,27 +69,28 @@ func TestInsertSliceInPosition(t *testing.T) {
 		original []byte
 		insert   []byte
 		position int
-		want     int
+		want     []byte
 	}{
 		{
 			name:     "InsertSliceInPosition with invalid position",
 			original: []byte("hello"),
 			insert:   []byte("world"),
 			position: -1,
-			want:     0,
+			want:     []byte("hello"),
 		},
 		{
 			name:     "InsertSliceInPosition with valid position",
 			original: []byte("hello"),
 			insert:   []byte("world"),
 			position: 3,
-			want:     2,
+			want:     []byte("helloworld"),
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := InsertSliceInPosition(tc.original, tc.insert, tc.position); got != tc.want {
+			got := InsertSliceInPosition(tc.original, tc.insert, tc.position)
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("InsertSliceInPosition() = %v, want %v", got, tc.want)
 			}
 		})

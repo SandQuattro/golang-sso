@@ -122,8 +122,8 @@ func (login *Endpoint) LoginHandler(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusForbidden, structs.ErrorResponse{Code: 4, Error: fmt.Sprintf("срок действия подписки истек для пользователя %s", u.Email)})
 	}
 
-	t, _, err := login.jwt.CreateJwtToken(u)
-	if err != nil || t == "" {
+	t, err := login.jwt.CreateJwtToken(u)
+	if err != nil || t == nil {
 		logger.Error(fmt.Errorf("login failed, reason: %s", err.Error()))
 		logger.Info("<< LoginHandler done.")
 		login.failedLoginCounter.Inc()
@@ -135,7 +135,7 @@ func (login *Endpoint) LoginHandler(ctx echo.Context) error {
 	}
 
 	res := &structs.AuthRes{
-		Token: t,
+		Token: t["access_token"].(string),
 	}
 
 	logger.Info("<< LoginHandler done.")
