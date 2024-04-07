@@ -138,7 +138,7 @@ Using Makefile:  make rebuild, restart, run, etc
 - [x] key length 2048-bit longer key 4096-bit
 - [x] add redis-based user suspicious activity detection / block
 - [x] add redis-based registration / login locking (maintenance mode)
-- [x] add refresh token with db storage
+- [x] add refresh token with db storage / redis storage with ttl
 - [x] re-reading config using SIGHUP signal
 - [ ] add docker deployment
 - [ ] uber zap logging
