@@ -9,6 +9,7 @@ import (
 	"log"
 	"sso/internal/app/crypto"
 	"testing"
+	"time"
 )
 
 var testQueries *Queries
@@ -42,6 +43,10 @@ func TestCreateUser(t *testing.T) {
 		Email:          "test@ya.ru",
 		HashedPassword: hashedPwd,
 		Role:           "user",
+		ValidTill: sql.NullTime{
+			Time:  time.Now().UTC(),
+			Valid: true,
+		},
 	}
 
 	user, err := testQueries.CreateUser(context.Background(), arg)

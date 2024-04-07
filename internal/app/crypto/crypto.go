@@ -4,13 +4,19 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"golang.org/x/crypto/argon2"
 	"runtime"
+
+	"github.com/labstack/gommon/random"
+	"golang.org/x/crypto/argon2"
 )
 
 func Hash256(data string) string {
 	hash := sha256.Sum256([]byte(data))
 	return hex.EncodeToString(hash[:])
+}
+
+func GenerateCode(length uint8) string {
+	return random.String(length, random.Alphanumeric)
 }
 
 func HashArgon2(salt []byte, data string, keyLen uint32) []byte {

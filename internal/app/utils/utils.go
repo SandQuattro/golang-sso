@@ -2,7 +2,6 @@ package utils
 
 import (
 	"context"
-	"github.com/labstack/gommon/random"
 	"github.com/opentracing/opentracing-go"
 	"sso/internal/app/structs"
 	"time"
@@ -11,13 +10,8 @@ import (
 func Ternary(cond bool, a any, b any) any {
 	if cond {
 		return a
-	} else {
-		return b
 	}
-}
-
-func GenerateCode(length uint8) string {
-	return random.String(length, random.Alphanumeric)
+	return b
 }
 
 func ValidateUserSubscription(ctx context.Context, user *structs.User) (bool, error) {

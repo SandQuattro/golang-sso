@@ -85,15 +85,19 @@ INSERT INTO users(auth_system,
                   family_name,
                   given_name,
                   email,
+                  email_verified,
                   hashed_password,
-                  role)
+                  role,
+                  valid_till)
 VALUES ('direct',
         $1,
         $2,
         $3,
         $4,
         $5,
-        $6)
+        $6,
+        $7,
+        $8)
 RETURNING *;
 
 -- name: CreateGoogleUser :one
@@ -107,7 +111,8 @@ INSERT INTO users(auth_system,
                   email_verified,
                   locale,
                   hashed_password,
-                  role)
+                  role,
+                  valid_till)
 VALUES ('google',
         $1,
         $2,
@@ -118,7 +123,8 @@ VALUES ('google',
         $7,
         $8,
         $9,
-        'user')
+        'user',
+        $10)
 RETURNING *;
 
 -- name: UpdateUser :exec
@@ -133,7 +139,8 @@ SET auth_system     = $2,
     email_verified  = $9,
     locale          = $10,
     hashed_password = $11,
-    role            = $12
+    role            = $12,
+    valid_till      = $13
 WHERE id = $1;
 
 -- name: DeleteUser :exec

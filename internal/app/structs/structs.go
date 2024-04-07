@@ -4,6 +4,19 @@ import (
 	"database/sql"
 )
 
+type ErrorResponse struct {
+	Code  int    `json:"code"`
+	Error string `json:"error,omitempty"`
+}
+
+type RefreshToken struct {
+	ID        int    `db:"id" json:"id"`
+	UserID    int    `db:"user_id" json:"user_id"`
+	Token     string `db:"token" json:"token"`
+	ExpiredAt string `db:"expired_at" json:"expired_at"`
+	CreatedAt string `db:"created_at" json:"created_at"`
+}
+
 type CreateUser struct {
 	Last     string `json:"lastName" validate:"required"`
 	First    string `json:"firstName" validate:"required"`
@@ -71,6 +84,15 @@ type VKUserInfo struct {
 	Response []VKUser `json:"response"`
 }
 
+type YandexUserInfo struct {
+	ID           string   `json:"id"`
+	Login        string   `json:"login"`
+	ClientID     string   `json:"client_id"`
+	DefaultEmail string   `json:"default_email"`
+	Emails       []string `json:"emails"`
+	Psuid        string   `json:"psuid"`
+}
+
 type VKUser struct {
 	ID        int64  `json:"id"`
 	FirstName string `json:"first_name"`
@@ -99,9 +121,4 @@ type Token struct {
 
 type AuthRes struct {
 	Token string `json:"token"`
-}
-
-type ErrorResponse struct {
-	Code  int    `json:"code"`
-	Error string `json:"error"`
 }

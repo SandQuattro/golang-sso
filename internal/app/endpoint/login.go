@@ -1,33 +1,35 @@
-package login
+package endpoint
 
 import (
 	"fmt"
+	"net/http"
+	"sso/internal/app/crypto"
+	"sso/internal/app/errs"
+	"sso/internal/app/interfaces"
+	"sso/internal/app/structs"
+	"sso/internal/app/utils"
+
 	logdoc "github.com/LogDoc-org/logdoc-go-appender/logrus"
 	"github.com/gurkankaymak/hocon"
 	"github.com/labstack/echo-contrib/jaegertracing"
 	"github.com/labstack/echo/v4"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"net/http"
-	"sso/internal/app/crypto"
-	"sso/internal/app/interfaces"
-	"sso/internal/app/structs"
-	"sso/internal/app/utils"
 )
 
-type Endpoint struct {
-	config              *hocon.Config
+type LoginEndpoint struct {
+	config              func() *hocon.Config
 	us                  interfaces.UserService
 	jwt                 interfaces.JwtService
 	successLoginCounter prometheus.Counter
 	failedLoginCounter  prometheus.Counter
 }
 
-func New(config *hocon.Config, us interfaces.UserService, jwt interfaces.JwtService) *Endpoint {
+func NewLoginEndpoint(config func() *hocon.Config, us interfaces.UserService, jwt interfaces.JwtService) *LoginEndpoint {
 	logger := logdoc.GetLogger()
 	successLoginCounter := prometheus.NewCounter( // create new counter metric. This is replacement for `prometheus.Metric` struct
 		prometheus.CounterOpts{
-			Subsystem: "demo_sso",
+			Subsystem: "sso",
 			Name:      "successful_login_attempts_total",
 			Help:      "How many successful login attempts.",
 		},
@@ -38,7 +40,7 @@ func New(config *hocon.Config, us interfaces.UserService, jwt interfaces.JwtServ
 	}
 	failedLoginCounter := prometheus.NewCounter( // create new counter metric.
 		prometheus.CounterOpts{
-			Subsystem: "demo_sso",
+			Subsystem: "sso",
 			Name:      "failed_login_attempts_total",
 			Help:      "How many failed login attempts.",
 		},
@@ -47,7 +49,7 @@ func New(config *hocon.Config, us interfaces.UserService, jwt interfaces.JwtServ
 	if err := prometheus.Register(failedLoginCounter); err != nil {
 		logger.Fatal(err)
 	}
-	return &Endpoint{
+	return &LoginEndpoint{
 		config:              config,
 		us:                  us,
 		jwt:                 jwt,
@@ -56,7 +58,7 @@ func New(config *hocon.Config, us interfaces.UserService, jwt interfaces.JwtServ
 	}
 }
 
-func (login *Endpoint) LoginHandler(ctx echo.Context) error {
+func (login *LoginEndpoint) LoginHandler(ctx echo.Context) error {
 	logger := logdoc.GetLogger()
 	logger.Info(">> LoginHandler started..")
 
@@ -71,7 +73,7 @@ func (login *Endpoint) LoginHandler(ctx echo.Context) error {
 	// Throws unauthorized error
 	if user.Login == "" || user.Password == "" {
 		login.failedLoginCounter.Inc()
-		return echo.ErrUnauthorized
+		return APIErrorSilent(http.StatusUnauthorized, errs.InvalidInputData)
 	}
 
 	span.LogKV("login", user.Login)
@@ -84,65 +86,66 @@ func (login *Endpoint) LoginHandler(ctx echo.Context) error {
 		logger.Error(fmt.Errorf("user not found, reason: %s", err.Error()))
 		logger.Info("<< LoginHandler done.")
 		login.failedLoginCounter.Inc()
-		return echo.NewHTTPError(http.StatusForbidden, structs.ErrorResponse{Error: err.Error()})
+		return APIErrorSilent(http.StatusForbidden, errs.UserGettingError)
 	}
 
 	if u == nil {
 		span.SetTag("error", true)
 		span.LogKV("error.message", "пользователь "+user.Login+" отсутствует в БД")
-		err := utils.CreateTask(login.config, span, utils.TypeTelegramDelivery, user.Login, user.Login, -1, fmt.Sprintf("Attention required! Error in user service, account login error: %s not found in database", user.Login))
+		err := utils.CreateTask(login.config, span, utils.TypeTelegramDelivery, user.Login, user.Login, -1, fmt.Sprintf("Attention required! Error in user service, account login error: %s not found in database\nIP:%s", user.Login, ctx.RealIP()))
 		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, structs.ErrorResponse{Error: err.Error()})
+			logger.Error(fmt.Errorf("error creating task: %s", err.Error()))
+			return APIErrorSilent(http.StatusInternalServerError, errs.TaskCreationError)
 		}
-		return echo.NewHTTPError(http.StatusForbidden, structs.ErrorResponse{Code: 9, Error: "пользователь отсутствует в БД"})
+		return APIErrorSilent(http.StatusForbidden, errs.AccessDenied)
 	}
 
 	// Сначала проверяем пароль на корректность
 	if !crypto.ComparePass(u.Password, user.Password) {
 		login.failedLoginCounter.Inc()
-		err := utils.CreateTask(login.config, span, utils.TypeTelegramDelivery, u.Name, u.Email, u.ID, fmt.Sprintf("Attention required! Error in user service, account login error: invalid password for user %s", u.Email))
+		err := utils.CreateTask(login.config, span, utils.TypeTelegramDelivery, u.Name, u.Email, u.ID, fmt.Sprintf("Attention required! Error in user service, account login error: invalid password for user %s\nIP:%s", u.Email, ctx.RealIP()))
 		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, structs.ErrorResponse{Error: err.Error()})
+			logger.Error(fmt.Errorf("error creating task: %s", err.Error()))
+			return APIErrorSilent(http.StatusInternalServerError, errs.TaskCreationError)
 		}
-		return echo.NewHTTPError(http.StatusForbidden, structs.ErrorResponse{Error: fmt.Sprintf("неверно указан пароль пользователя %s", u.Email)})
+		return APIErrorSilent(http.StatusForbidden, errs.AccessDenied)
 	}
 
 	// затем подтверждена ли почта
 	if !u.EmailVerified {
-		return echo.NewHTTPError(http.StatusForbidden, structs.ErrorResponse{Code: 8, Error: fmt.Sprintf("пользователь %s не подтвердил почту", u.Email)})
+		return APIErrorSilent(http.StatusForbidden, errs.AccessDenied)
 	}
 
 	isSubscriptionValid, err := utils.ValidateUserSubscription(c, u)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, structs.ErrorResponse{Error: err.Error()})
+		return APIErrorSilent(http.StatusInternalServerError, errs.SubscriptionValidationError)
 	}
 
 	// и в конце уже проверяем подписку
 	if !isSubscriptionValid {
-		return echo.NewHTTPError(http.StatusForbidden, structs.ErrorResponse{Code: 4, Error: fmt.Sprintf("срок действия подписки истек для пользователя %s", u.Email)})
+		return APIErrorSilent(http.StatusForbidden, errs.SubscriptionValidationError)
 	}
 
-	t, err := login.jwt.CreateJwtToken(u)
+	t, err := login.jwt.CreateJwtToken(c, u)
 	if err != nil || t == nil {
 		logger.Error(fmt.Errorf("login failed, reason: %s", err.Error()))
 		logger.Info("<< LoginHandler done.")
 		login.failedLoginCounter.Inc()
 		err := utils.CreateTask(login.config, span, utils.TypeTelegramDelivery, u.Name, u.Email, u.ID, fmt.Sprintf("Attention required! Error in user service, create jwt error: %s", err.Error()))
 		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, structs.ErrorResponse{Error: err.Error()})
+			logger.Error(fmt.Errorf("error creating task: %s", err.Error()))
+			return APIErrorSilent(http.StatusInternalServerError, errs.TaskCreationError)
 		}
-		return echo.NewHTTPError(http.StatusForbidden, structs.ErrorResponse{Error: err.Error()})
-	}
-
-	res := &structs.AuthRes{
-		Token: t["access_token"].(string),
+		return APIErrorSilent(http.StatusForbidden, errs.AccessDenied)
 	}
 
 	logger.Info("<< LoginHandler done.")
 	login.successLoginCounter.Inc()
-	err = utils.CreateTask(login.config, span, utils.TypeTelegramDelivery, user.Login, user.Login, -1, fmt.Sprintf("Account login successful: %s", user.Login))
+	err = utils.CreateTask(login.config, span, utils.TypeTelegramDelivery, user.Login, user.Login, -1, fmt.Sprintf("Account login successful: %s\nIP:%s", user.Login, ctx.RealIP()))
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, structs.ErrorResponse{Error: err.Error()})
+		logger.Error(fmt.Errorf("error creating task: %s", err.Error()))
+		return APIErrorSilent(http.StatusInternalServerError, errs.TaskCreationError)
 	}
-	return ctx.JSON(http.StatusOK, res)
+
+	return APISuccess(http.StatusOK, t)
 }

@@ -22,7 +22,7 @@ COPY . .
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 
 # Run go build (with ldflags to reduce binary size).
-RUN go build -ldflags="-s -w" -o demo-core ./cmd/demo-sso
+RUN go build -ldflags="-s -w" -o sso ./cmd/sso
 
 #
 # Third stage:
@@ -32,7 +32,8 @@ RUN go build -ldflags="-s -w" -o demo-core ./cmd/demo-sso
 FROM scratch
 
 # Copy binary from /build to the root folder of the scratch container.
-COPY --from=backend ["/build/demo-sso", "/"]
+COPY --from=backend ["/build/sso", "/"]
+COPY --from=backend ["/build/conf", "/conf"]
 
 # Command to run when starting the container.
-ENTRYPOINT ["/demo-sso"]
+ENTRYPOINT ["/sso"]

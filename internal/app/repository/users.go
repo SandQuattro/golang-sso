@@ -10,6 +10,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"sso/internal/app/errs"
 	"sso/internal/app/structs"
+	"time"
 )
 
 type UserRepository struct {
@@ -188,6 +189,37 @@ func (r *UserRepository) FindUserByLoginAndSystem(ctx context.Context, login str
 	return
 }
 
+func (r *UserRepository) FindUserProfile(ctx context.Context, userID int) (map[string]interface{}, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	logger := logdoc.GetLogger()
+
+	span, _ := opentracing.StartSpanFromContext(ctx, "getting user profile repository")
+	defer span.Finish()
+
+	profile := make(map[string]interface{})
+
+	err := r.DB.QueryRowx(`SELECT id,
+									     user_id,
+									     send_messages
+								   FROM user_profile_settings
+								  WHERE user_id = $1`, userID).MapScan(profile)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+
+	if err != nil {
+		logger.Warn(fmt.Sprintf(">> FindUserProfile > Ошибка поиска профиля пользователя по id:%d", userID))
+		return nil, err
+	}
+
+	return profile, nil
+}
+
 func (r *UserRepository) FindUserNotificationByTypeAndCode(ctx context.Context, notificationType string, code string) (*structs.UserNotification, error) {
 	logger := logdoc.GetLogger()
 
@@ -254,6 +286,42 @@ func (r *UserRepository) Create(ctx context.Context, hashedPassword []byte, crea
 
 	// A return statement without arguments returns the named return values.
 	// This is known as a "naked" return.
+	return nil
+}
+
+func (r *UserRepository) CreateUserProfile(ctx context.Context, userID int, profile map[string]interface{}) error {
+	logger := logdoc.GetLogger()
+	span, _ := opentracing.StartSpanFromContext(ctx, "create user profile repository")
+	defer span.Finish()
+
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		logger.Error(">> CreateUserProfile > error starting transaction")
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`DELETE FROM user_profile_settings WHERE user_id = $1`, userID)
+	if err != nil {
+		logger.Error("Ошибка удаления профиля пользователя, ", err.Error())
+		return err
+	}
+
+	_, err = tx.Exec(`INSERT INTO user_profile_settings(user_id, send_messages) 
+											VALUES($1, $2)`,
+		userID,
+		profile["send_messages"],
+	)
+	if err != nil {
+		logger.Error("Ошибка создания профиля пользователя, ", err.Error())
+		return err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -369,7 +437,7 @@ func (r *UserRepository) CreateGoogleUser(ctx context.Context, googleUser *struc
 	logger := logdoc.GetLogger()
 
 	_, err = r.DB.Exec(`INSERT INTO users( auth_system,
-                  								 sub,
+                  								  sub,
 												  name,
 												  given_name,
 												  family_name,
@@ -378,7 +446,8 @@ func (r *UserRepository) CreateGoogleUser(ctx context.Context, googleUser *struc
 												  email_verified,
 												  locale,
 												  hashed_password,
-												  role) 
+												  role,
+												  valid_till)	 
 											VALUES($1, 
 											       $2,  
 											       $3, 
@@ -389,7 +458,8 @@ func (r *UserRepository) CreateGoogleUser(ctx context.Context, googleUser *struc
 											       $8, 
 											       $9,
 											       $10,
-											       $11
+											       $11,
+											       $12
 											       )`,
 		"google",
 		googleUser.Sub,
@@ -402,6 +472,7 @@ func (r *UserRepository) CreateGoogleUser(ctx context.Context, googleUser *struc
 		googleUser.Locale,
 		nil,
 		"user",
+		time.Now().UTC().Add(1*24*time.Hour),
 	)
 	if err != nil {
 		logger.Error("Ошибка создания google пользователя, ", err.Error())
@@ -509,6 +580,52 @@ func (r *UserRepository) CreateVKUser(ctx context.Context, vkUser *structs.VKUse
 	}
 
 	return r.FindUserByLoginAndSystem(ctx, vkUser.Email, "vk")
+}
+
+func (r *UserRepository) CreateYandexUser(ctx context.Context, userInfo *structs.YandexUserInfo) (*structs.User, error) {
+	logger := logdoc.GetLogger()
+
+	_, err := r.DB.Exec(`INSERT INTO users(auth_system, 
+												sub,
+											    name,
+											    given_name,
+											    family_name,
+											    avatar,
+											    email,
+											    email_verified,
+											    locale,
+											    hashed_password,
+											    role) 
+											VALUES($1, 
+											       $2,  
+											       $3, 
+											       $4, 
+											       $5, 
+											       $6, 
+											       $7, 
+											       $8, 
+											       $9,
+											       $10,
+											       $11
+											       )`,
+		"yandex",
+		userInfo.ID,
+		userInfo.Login,
+		"",
+		"",
+		"",
+		userInfo.DefaultEmail,
+		true,
+		"ru",
+		nil,
+		"user",
+	)
+	if err != nil {
+		logger.Error("Ошибка создания Yandex пользователя, ", err.Error())
+		return nil, err
+	}
+
+	return r.FindUserByLoginAndSystem(ctx, userInfo.DefaultEmail, "yandex")
 }
 
 func (r *UserRepository) MergeUserData(sessionID int, userID int) error {

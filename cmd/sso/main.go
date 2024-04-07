@@ -4,112 +4,116 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/LogDoc-org/logdoc-go-appender/common"
-	logdoc "github.com/LogDoc-org/logdoc-go-appender/logrus"
-	"github.com/jmoiron/sqlx"
-	"github.com/redis/go-redis/v9"
-	"github.com/sirupsen/logrus"
-	_ "net/http/pprof"
 	"os"
-	"runtime"
+	"os/signal"
 	"sso/internal/app/logging"
 	"sso/internal/app/utils"
-	"sso/internal/app/utils/gs"
 	"sso/internal/config"
 	"sso/internal/db"
 	"sso/internal/pkg/app"
 	"strconv"
+	"syscall"
+
+	logdoc "github.com/LogDoc-org/logdoc-go-appender/logrus"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	// Первым делом считаем аргументы командной строки
-	confFile := flag.String("config", "conf/application.conf", "-config=<config file name>")
-	port := flag.String("port", "9000", "-port=<service port>")
+
+	// Parse command line arguments
+	confFile := flag.String("config", "conf/application.conf", "Path to the configuration file")
+	port := flag.String("port", "9000", "Service port")
 
 	flag.Parse()
-	// и подгрузим конфиг
+
+	// Load configuration
 	config.MustConfig(confFile)
 	conf := config.GetConfig()
 
-	// Создаем подсистему логгирования LogDoc
+	// Initialize LogDoc logging subsystem
 	conn, err := logging.LDSubsystemInit()
 	logger := logdoc.GetLogger()
-	if err == nil {
-		logger.Info(fmt.Sprintf(
-			"LogDoc subsystem initialized successfully@@source=%s:%d",
-			common.GetSourceName(runtime.Caller(0)), // фреймы не скипаем, не exception
-			common.GetSourceLineNum(runtime.Caller(0)),
-		))
-	}
-
-	c := *conn
-	if c != nil {
-		defer c.Close()
+	if err != nil {
+		logger.Error("Error initializing LogDoc subsystem")
 	} else {
-		logger.Error("Error LogDoc subsystem initialization")
-	}
-
-	if port == nil || *port == "" {
-		logger.Fatal(">> Error, port is empty")
-	}
-
-	if conf.GetBoolean("debug") {
-		logger.Warn("!!! Debug mode ON !!!")
-	}
-
-	pid := utils.CreatePID()
-	defer func() {
-		err := os.Remove("RUNNING_PID_" + strconv.Itoa(pid))
-		if err != nil {
-			logger.Fatal("Error removing PID file. Exiting...")
+		logger.Info("LogDoc subsystem initialized successfully")
+		if conn != nil {
+			defer (*conn).Close()
 		}
-	}()
+	}
 
-	// Коннектимся к базе
+	// Validate port
+	if *port == "" {
+		logger.Fatal("Error: port is empty")
+	}
+
+	// Create and remove PID file
+	pid := utils.CreatePID()
+	defer os.Remove("RUNNING_PID_" + strconv.Itoa(pid))
+
+	// Connect to the database
 	dbPass := os.Getenv("PGPASS")
 	if dbPass == "" {
-		logger.Fatal("db password is empty")
+		logger.Fatal("Database password is empty")
 	}
 
 	d := db.Connect(conf, dbPass)
-	defer func(d *sqlx.DB) {
-		err := d.Close()
-		if err != nil {
-			logger.Fatal(err)
-		}
-	}(d)
-	logger.Info(">> DATABASE CONNECTION SUCCESSFUL")
+	defer d.Close()
 
-	// Trying to connect to redis
+	logger.Info("Database connection successful")
+
+	// Connect to Redis
 	rdb := redis.NewClient(&redis.Options{
 		Addr: fmt.Sprintf("%s:%d", conf.GetString("redis.host"), conf.GetInt("redis.port")),
 	})
 	defer rdb.Close()
 
-	logger.Info("Trying to connect to redis...")
-	err = rdb.Ping(context.Background()).Err()
+	logger.Info("Attempting to connect to Redis...")
+	err = rdb.Ping(ctx).Err()
 	if err != nil {
-		logrus.Error(fmt.Errorf("failed to ping redis: %w", err))
-		rdb.Close()
-		rdb = nil
+		logger.Error("Failed to ping Redis:", err)
+	} else {
+		logger.Info("Redis connection successful")
 	}
-	logger.Info(">> REDIS CONNECTION SUCCESSFUL")
 
-	// Создадим приложение
-	a, err := app.New(ctx, conf, *port, rdb, d)
+	// Create and run the application
+	a, err := app.New(ctx, config.GetConfig, *port, rdb, d)
 	if err != nil {
-		logger.Fatal(err)
+		logger.Fatal("Error creating application:", err)
 	}
 
 	go func() {
-		// и запустим приложение (веб сервер)
-		logger.Debug(fmt.Sprintf(">> RUNNING SERVER ON PORT: %s", *port))
-		err = a.Run()
-		if err != nil {
-			logger.Fatal(err)
+		sighup := make(chan os.Signal, 1)
+		signal.Notify(sighup, syscall.SIGHUP)
+		for {
+			<-sighup
+			logger.Info("Reloading configuration...")
+			if err := config.ReloadConfig(confFile); err != nil {
+				logger.Error("Error reloading config:", err)
+			}
+			logger.Info("Configuration reloaded.")
 		}
 	}()
-	gs.GraceShutdown(ctx, a)
+
+	go func() {
+		logger.Debug("Running server on port:", *port)
+		if err := a.Run(); err != nil {
+			logger.Fatal("Error running application:", err)
+		}
+	}()
+
+	// Используем буферизированный канал, как рекомендовано внутри signal.Notify функции
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	// Блокируемся и ожидаем из канала quit - interrupt signal чтобы сделать gracefully shutdown сервака с таймаутом в 10 сек
+	<-quit
+
+	// Получили SIGINT (0x2), выполняем grace shutdown
+	logger.Warn("Gracefully shutdown server...")
+	if err := a.Echo.Shutdown(ctx); err != nil {
+		logger.Error("gracefully shutdown error")
+	}
 }

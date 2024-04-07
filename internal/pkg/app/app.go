@@ -3,111 +3,132 @@ package app
 import (
 	"context"
 	"fmt"
+	jwtverification "github.com/SandQuattro/jwt-verification"
+	"golang.org/x/time/rate"
+	"sso/internal/app/endpoint"
+	"sso/internal/app/mv"
+	"sso/internal/app/service"
+	"sso/internal/app/utils"
+	echopprof "sso/internal/pprof"
+	"strings"
+	"time"
+
 	logdoc "github.com/LogDoc-org/logdoc-go-appender/logrus"
 	"github.com/gurkankaymak/hocon"
 	"github.com/jmoiron/sqlx"
-	"github.com/kitabisa/teler-waf"
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
-	"sso/internal/app/endpoint/auth/google"
-	"sso/internal/app/endpoint/auth/mailru"
-	"sso/internal/app/endpoint/auth/vk"
-	"sso/internal/app/endpoint/create"
-	"sso/internal/app/endpoint/login"
-	"sso/internal/app/endpoint/refresh"
-	"sso/internal/app/endpoint/reset"
-	"sso/internal/app/endpoint/root"
-	customcors "sso/internal/app/mv/cors"
-	"sso/internal/app/mv/headerchecker"
-	"sso/internal/app/service/jwtservice"
-	"sso/internal/app/service/userservice"
-	"sso/internal/app/utils"
-	echopprof "sso/internal/pprof"
-	"strings"
-	"time"
 )
 
 type App struct {
-	port    string
-	db      *sqlx.DB
-	config  *hocon.Config
-	Echo    *echo.Echo
-	root    *root.Endpoint
-	google  *google.Endpoint
-	mailru  *mailru.Endpoint
-	vk      *vk.Endpoint
-	create  *create.Endpoint
-	login   *login.Endpoint
-	refresh *refresh.Endpoint
-	reset   *reset.Endpoint
+	port   string
+	db     *sqlx.DB
+	rdb    *redis.Client
+	config func() *hocon.Config
+	Echo   *echo.Echo
 
-	jwt *jwtservice.JwtService
-	u   *userservice.UserService
+	// endpoints
+	root        *endpoint.RootEndpoint
+	maintenance *endpoint.MaintenanceEndpoint
+	profile     *endpoint.ProfileEndpoint
+	create      *endpoint.CreateEndpoint
+	login       *endpoint.LoginEndpoint
+	refresh     *endpoint.RefreshEndpoint
+	reset       *endpoint.ResetEndpoint
+
+	// oauth
+	google *endpoint.GoogleEndpoint
+	mailru *endpoint.MailRuEndpoint
+	vk     *endpoint.VKEndpoint
+	yandex *endpoint.YandexEndpoint
+
+	// services
+	jwt *service.JwtService
+	u   *service.UserService
 }
 
 var logger *logrus.Logger
 
-func New(ctx context.Context, config *hocon.Config, port string, rdb *redis.Client, db *sqlx.DB) (*App, error) {
+func New(ctx context.Context, config func() *hocon.Config, port string, rdb *redis.Client, db *sqlx.DB) (*App, error) {
 	logger = logdoc.GetLogger()
 
-	a := App{port: port, config: config, db: db}
+	a := App{port: port, config: config, db: db, rdb: rdb}
 
-	a.jwt = jwtservice.New(ctx, config, rdb, db)
-	a.u = userservice.New(config, db)
+	a.jwt = service.NewJWTService(ctx, config, rdb, db)
+	a.u = service.NewUserService(config, db)
 
-	a.root = root.New()
-	a.google = google.New(config, a.u, a.jwt)
-	a.mailru = mailru.New(config, a.u, a.jwt)
-	a.vk = vk.New(config, a.u, a.jwt)
-	a.create = create.New(config, a.jwt, a.u)
-	a.login = login.New(config, a.u, a.jwt)
-	a.refresh = refresh.New(a.jwt)
-	a.reset = reset.New(config, a.u)
+	// endpoints
+	a.root = endpoint.NewRootEndpoint()
+
+	a.maintenance = endpoint.NewMaintenanceEndpoint(rdb)
+
+	a.login = endpoint.NewLoginEndpoint(config, a.u, a.jwt)
+	a.google = endpoint.NewGoogleEndpoint(config, a.u, a.jwt)
+	a.mailru = endpoint.NewMailRuEndpoint(config, a.u, a.jwt)
+	a.vk = endpoint.NewVKEndpoint(config, a.u, a.jwt)
+	a.yandex = endpoint.NewYandexEndpoint(config, a.u, a.jwt)
+
+	a.create = endpoint.NewCreateEndpoint(config, a.jwt, a.u)
+	a.refresh = endpoint.NewRefreshEndpoint(config, db, rdb, a.jwt, a.u)
+	a.reset = endpoint.NewResetEndpoint(config, a.u)
+
+	jwtVerificationService := jwtverification.New(config, logger, jwtverification.PEM)
+	a.profile = endpoint.NewProfileEndpoint(jwtVerificationService, db, rdb)
 
 	// Echo instance
 	a.Echo = echo.New()
 
-	if a.config.GetBoolean("debug") {
+	if a.config().GetBoolean("debug") {
 		echopprof.Wrap(a.Echo)
-		a.Echo.Use(headerchecker.HeaderPrinter())
+		a.Echo.Use(mv.HeaderPrinter())
 	}
-
-	// rate limiter
-	store := middleware.NewRateLimiterMemoryStoreWithConfig(middleware.RateLimiterMemoryStoreConfig{
-		Rate: 20,
-	})
-	rateConfig := middleware.RateLimiterConfig{
-		Skipper: middleware.DefaultSkipper,
-		Store:   store,
-		DenyHandler: func(context echo.Context, identifier string, err error) error {
-			return middleware.ErrRateLimitExceeded
-		},
-	}
-	a.Echo.Use(middleware.RateLimiterWithConfig(rateConfig))
 
 	// Global Endpoints Middleware
 	// Вызов перед каждым обработчиком
 	// В них может быть логгирование,
 	// поверка токенов, ролей, прав и многое другое
 	// TODO: !!! пофиксить на боевом корсы !!!
-	a.Echo.Use(customcors.CORS())
+
+	// Проверяем, установлен ли режим обслуживания
+	// отклоняем все запросы
+	a.Echo.Use(mv.Maintenance(rdb))
+
+	a.Echo.Use(mv.CORS())
+
+	// rate limiter
+	store := middleware.NewRateLimiterMemoryStoreWithConfig(middleware.RateLimiterMemoryStoreConfig{
+		Rate:  rate.Limit(config().GetInt("rate.limit")),
+		Burst: config().GetInt("rate.burst"),
+	})
+	rateConfig := middleware.RateLimiterConfig{
+		Store: store,
+		DenyHandler: func(context echo.Context, identifier string, err error) error {
+			// by default, we have an ctx.RealIP() in identifier extracted by IdentifierExtractor func
+			logger.Warn(fmt.Sprintf(">> Rate Limiter Middleware > rate limiter access denied for %s, error:%v", identifier, err))
+			rdb.Set(context.Request().Context(), "blocked:"+identifier, true, 10*time.Minute)
+			return middleware.ErrRateLimitExceeded
+		},
+	}
+
+	a.Echo.Use(mv.AntiDDOSProtection(rdb))
+	a.Echo.Use(middleware.RateLimiterWithConfig(rateConfig))
 
 	//// Teler Intrusion Detection MW
-	telerMiddleware := teler.New(
-		teler.Options{
-			//Development: true,
-			Whitelists: []string{
-				`request.IP in ["127.0.0.1", "::1", "0.0.0.0"]`,
-				`request.URI matches "^/(login|create)?$"`,
-				`request.URI matches "^/oauth/.*$"`,
-				`request.Headers matches "(curl|PostmanRuntime)/*" && threat == BadCrawler`,
-			},
-		},
-	)
-	a.Echo.Use(echo.WrapMiddleware(telerMiddleware.Handler))
+	//telerMiddleware := teler.New(
+	//	teler.Options{
+	//		//Development: true,
+	//		Whitelists: []string{
+	//			`request.IP in ["127.0.0.1", "::1", "0.0.0.0"]`,
+	//			`request.URI matches "^/(login|create)?$"`,
+	//			`request.URI matches "^/oauth/.*$"`,
+	//			`request.Headers matches "(curl|PostmanRuntime)/*" && threat == BadCrawler`,
+	//		},
+	//	},
+	//)
+	//a.Echo.Use(echo.WrapMiddleware(telerMiddleware.Handler))
 
 	a.Echo.Use(middleware.RequestID())
 
@@ -158,39 +179,22 @@ func New(ctx context.Context, config *hocon.Config, port string, rdb *redis.Clie
 	}))
 
 	// Metrics middleware
-	a.Echo.Use(echoprometheus.NewMiddleware("demo_sso"))
+	a.Echo.Use(echoprometheus.NewMiddleware("sso"))
 	a.Echo.GET("/sso/metrics", echoprometheus.NewHandler())
-
-	// Body dump mv captures the request and response payload and calls the registered handler.
-	// Generally used for debugging/logging purpose.
-	// Avoid using it if your request/response payload is huge e.g. file upload/download
-	a.Echo.Use(middleware.BodyDumpWithConfig(middleware.BodyDumpConfig{
-		Skipper: func(c echo.Context) bool {
-			return strings.Compare(c.Request().RequestURI, "/login") == 0 ||
-				strings.Contains(c.Request().RequestURI, "/debug/") ||
-				strings.Contains(c.Request().RequestURI, "/sso/metrics")
-		},
-		Handler: func(c echo.Context, reqBody, resBody []byte) {
-			logger.Debug(fmt.Sprintf(`>> BodyDump middleware
-			request ip:%s
-			request metod:%s
-			request uri:%s
-			request paylod (if any):%s
-			response body:
-%s`,
-				c.RealIP(),
-				c.Request().Method,
-				c.Request().RequestURI,
-				reqBody,
-				resBody))
-		},
-	}))
 
 	// Routes
 	a.Echo.GET("/", a.root.RootHandler)
+	a.Echo.GET("/maintenance", a.maintenance.MaintenanceHandler)
+	a.Echo.POST("/maintenance", a.maintenance.SaveMaintenanceHandler, mv.AdminHeaderCheck(config, rdb, jwtVerificationService))
+	a.Echo.DELETE("/maintenance", a.maintenance.StopMaintenanceHandler, mv.AdminHeaderCheck(config, rdb, jwtVerificationService))
+
 	a.Echo.POST("/login", a.login.LoginHandler)
 	a.Echo.POST("/create", a.create.CreateHandler)
 	a.Echo.GET("/refresh", a.refresh.RefreshHandler)
+
+	a.Echo.GET("/user/profile", a.profile.ProfileHandler, mv.HeaderCheck(config, rdb, jwtVerificationService))
+	a.Echo.POST("/user/profile", a.profile.SaveProfileHandler, mv.HeaderCheck(config, rdb, jwtVerificationService))
+
 	a.Echo.GET("/email/verify", a.create.EmailVerifyHandler)
 	a.Echo.POST("/password/reset", a.reset.ResetHandler)
 	a.Echo.POST("/password/reset/validate", a.reset.PasswordResetValidateHandler)
@@ -203,6 +207,9 @@ func New(ctx context.Context, config *hocon.Config, port string, rdb *redis.Clie
 	// oauth2 VK
 	a.Echo.GET("/oauth/vk/url", a.vk.VKAuthGetCodeHandler)
 	a.Echo.GET("/oauth/vk/login", a.vk.VKAuthLoginHandler)
+	// oauth2 Yandex
+	a.Echo.GET("/oauth/yandex/url", a.yandex.YandexAuthGetCodeHandler)
+	a.Echo.GET("/oauth/yandex/login", a.yandex.YandexAuthLoginHandler)
 
 	logger.Info("Application created!")
 

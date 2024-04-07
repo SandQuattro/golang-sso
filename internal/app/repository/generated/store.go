@@ -29,7 +29,7 @@ func (store *Store) execTransaction(ctx context.Context, fn func(*Queries) error
 	err = fn(q)
 	if err != nil {
 		if rbErr := tx.Rollback(); rbErr != nil {
-			return fmt.Errorf("tx err: %w, rb err: %v", err, rbErr)
+			return fmt.Errorf("tx err: %w, rb err: %w", err, rbErr)
 		}
 		return err
 	}

@@ -1,4 +1,4 @@
-### ![image](https://github.com/SandQuattro/golang-sso/assets/31468131/4454c9ac-4dcd-405a-a3cf-8e92cb2bd170)
+### ![image](https://github.com/SandQuattro/golangsso/assets/31468131/4454c9ac-4dcd-405a-a3cf-8e92cb2bd170)
 # Single Sign-on API
 #### Version 1.0
 
@@ -134,11 +134,13 @@ Using Makefile:  make rebuild, restart, run, etc
 ### Future plans
 
 - [x] added reading keys from DER format, documentation
-- [x] automatic keys rotation
+- [x] automatic keys rotation with redis key publishing
 - [x] key length 2048-bit longer key 4096-bit
-- [ ] move oauth to separate table, one user can have multiple oauth accounts
-- [ ] add refresh token with db storage
+- [x] add redis-based user suspicious activity detection / block
+- [x] add redis-based registration / login locking (maintenance mode)
+- [x] add refresh token with db storage
+- [x] re-reading config using SIGHUP signal
+- [ ] add docker deployment
 - [ ] uber zap logging
 - [ ] sliding salt position
-- [ ] rereading config using SIGHUP signal
 - [ ] gRPC other services integration

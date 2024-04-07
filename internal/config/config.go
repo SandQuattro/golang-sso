@@ -19,3 +19,12 @@ func MustConfig(confFile *string) {
 	}
 	config = c
 }
+
+func ReloadConfig(confFile *string) error {
+	var err error
+	config, err = hocon.ParseResource(*confFile)
+	if err != nil {
+		return err
+	}
+	return nil
+}

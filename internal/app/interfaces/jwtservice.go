@@ -1,6 +1,7 @@
 package interfaces
 
 import (
+	"context"
 	"crypto"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
@@ -8,7 +9,7 @@ import (
 )
 
 type JwtService interface {
-	CreateJwtToken(user *structs.User) (map[string]interface{}, error)
+	CreateJwtToken(ctx context.Context, user *structs.User) (map[string]interface{}, error)
 	RefreshJwtToken(ctx echo.Context, token string) (string, error)
 	GenerateRSAKeys(bits int) (crypto.PublicKey, crypto.PrivateKey, error)
 	ConvertRSAPublicKeyToPEM(publicKey crypto.PublicKey) ([]byte, error)

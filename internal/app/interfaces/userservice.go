@@ -13,6 +13,7 @@ type UserService interface {
 	LoginGoogleUser(ctx context.Context, googleUser *structs.GoogleUserInfo) (user *structs.User, err error)
 	LoginMailRuUser(ctx context.Context, mailRuUser *structs.MailRuUserInfo) (user *structs.User, err error)
 	LoginVKUser(ctx context.Context, vkUser *structs.VKUser) (user *structs.User, err error)
+	LoginYandexUser(ctx context.Context, s *structs.YandexUserInfo) (user *structs.User, err error)
 	MergeUserData(sessionID int, userID int) (err error)
 	CreateUserNotification(ctx context.Context, userID int, notificationType string, code string) error
 	GetUserNotificationByTypeAndCode(ctx context.Context, notificationType string, code string) (*structs.UserNotification, error)

@@ -1,6 +1,8 @@
 include .env
 
-PROJECTNAME=demo_sso
+.PHONY: all test clean migrations postgresinit postgres createdb dropdb sqlc run rebuild
+
+PROJECTNAME=_sso
 
 MAC_ARCH=arm64
 ARCH=amd64
@@ -24,8 +26,6 @@ PID=./tmp/.$(PROJECTNAME)-api-server.pid
 
 # Make пишет работу в консоль Linux. Сделаем его silent.
 MAKEFLAGS += --silent
-
-.PHONY: all test clean migrations postgresinit postgres createdb dropdb sqlc run rebuild
 
 all: test build
 
@@ -66,6 +66,7 @@ run:
 
 rebuild:
 	@echo "Rebuilding instances..."
+	@for file in $$(find . -name 'RUNNING_PID_*'); do PID=$$(cat "$$file"); kill -2 "$$PID"; done
 	@git pull origin main
 	@make linux
 	@nohup ./bin/$(LINUX) -config=conf/application.conf -port=9000 > sso1.out &
@@ -88,3 +89,12 @@ dropdb:
 
 sqlc:
 	sqlc generate
+
+docker:
+	docker build -t sso .
+	docker run --rm \
+		--name sso \
+		--network host \
+		-p 9000:9000 \
+		-e PGPASS=$(PGPASS) \
+		sso -config=conf/application.conf -port=9000

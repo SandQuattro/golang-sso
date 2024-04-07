@@ -24,7 +24,13 @@ func Connect(config *hocon.Config, dbPass string) *sqlx.DB {
 	}
 	err = db.Ping()
 	if err != nil {
-		logger.Fatal(fmt.Sprintf("Error pinging database: %s", config.GetString("db.driver")))
+		logger.Fatal(fmt.Sprintf("Error pinging database: %s", config.GetString("db.name")))
 	}
+
+	// настройка размера пула
+	// db.SetMaxOpenConns(25)
+	// db.SetMaxIdleConns(25)
+	// db.SetConnMaxLifetime(5 * time.Minute)
+
 	return db
 }
