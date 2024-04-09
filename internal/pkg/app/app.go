@@ -88,12 +88,12 @@ func New(ctx context.Context, config func() *hocon.Config, port string, rdb *red
 
 	// Global Endpoints Middleware
 	// Вызов перед каждым обработчиком
-	// В них может быть логгирование,
-	// поверка токенов, ролей, прав и многое другое
-	// TODO: !!! пофиксить на боевом корсы !!!
+	// В них может быть логгирование, проверка токенов, ролей, прав и многое другое
 
 	// Проверяем, установлен ли режим обслуживания
 	// отклоняем все запросы
+
+	// TODO: !!! пофиксить на боевом корсы !!!
 	a.Echo.Use(mv.Maintenance(rdb))
 
 	a.Echo.Use(mv.CORS())
@@ -179,7 +179,7 @@ func New(ctx context.Context, config func() *hocon.Config, port string, rdb *red
 	}))
 
 	// Metrics middleware
-	a.Echo.Use(echoprometheus.NewMiddleware("sso"))
+	a.Echo.Use(echoprometheus.NewMiddleware("_sso"))
 	a.Echo.GET("/sso/metrics", echoprometheus.NewHandler())
 
 	// Routes
@@ -198,6 +198,7 @@ func New(ctx context.Context, config func() *hocon.Config, port string, rdb *red
 	a.Echo.GET("/email/verify", a.create.EmailVerifyHandler)
 	a.Echo.POST("/password/reset", a.reset.ResetHandler)
 	a.Echo.POST("/password/reset/validate", a.reset.PasswordResetValidateHandler)
+	a.Echo.POST("/password/change", a.reset.PasswordChangeHandler, mv.HeaderCheck(config, rdb, jwtVerificationService))
 	// oauth2 google
 	a.Echo.GET("/oauth/google/url", a.google.GoogleAuthGetCodeHandler)
 	a.Echo.GET("/oauth/google/login", a.google.GoogleAuthLoginHandler)

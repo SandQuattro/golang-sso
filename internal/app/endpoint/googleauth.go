@@ -142,5 +142,5 @@ func (e *GoogleEndpoint) GoogleAuthLoginHandler(ctx echo.Context) error {
 	}
 
 	logger.Info("<< GoogleAuthLoginHandler done.")
-	return APISuccess(http.StatusOK, t)
+	return APISuccessWithRefreshToken(ctx, http.StatusOK, t)
 }

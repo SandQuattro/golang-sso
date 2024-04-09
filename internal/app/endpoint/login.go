@@ -2,19 +2,18 @@ package endpoint
 
 import (
 	"fmt"
-	"net/http"
-	"sso/internal/app/crypto"
-	"sso/internal/app/errs"
-	"sso/internal/app/interfaces"
-	"sso/internal/app/structs"
-	"sso/internal/app/utils"
-
 	logdoc "github.com/LogDoc-org/logdoc-go-appender/logrus"
 	"github.com/gurkankaymak/hocon"
 	"github.com/labstack/echo-contrib/jaegertracing"
 	"github.com/labstack/echo/v4"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"net/http"
+	"sso/internal/app/crypto"
+	"sso/internal/app/errs"
+	"sso/internal/app/interfaces"
+	"sso/internal/app/structs"
+	"sso/internal/app/utils"
 )
 
 type LoginEndpoint struct {
@@ -29,7 +28,7 @@ func NewLoginEndpoint(config func() *hocon.Config, us interfaces.UserService, jw
 	logger := logdoc.GetLogger()
 	successLoginCounter := prometheus.NewCounter( // create new counter metric. This is replacement for `prometheus.Metric` struct
 		prometheus.CounterOpts{
-			Subsystem: "sso",
+			Subsystem: "_sso",
 			Name:      "successful_login_attempts_total",
 			Help:      "How many successful login attempts.",
 		},
@@ -40,7 +39,7 @@ func NewLoginEndpoint(config func() *hocon.Config, us interfaces.UserService, jw
 	}
 	failedLoginCounter := prometheus.NewCounter( // create new counter metric.
 		prometheus.CounterOpts{
-			Subsystem: "sso",
+			Subsystem: "_sso",
 			Name:      "failed_login_attempts_total",
 			Help:      "How many failed login attempts.",
 		},
@@ -116,16 +115,6 @@ func (login *LoginEndpoint) LoginHandler(ctx echo.Context) error {
 		return APIErrorSilent(http.StatusForbidden, errs.AccessDenied)
 	}
 
-	isSubscriptionValid, err := utils.ValidateUserSubscription(c, u)
-	if err != nil {
-		return APIErrorSilent(http.StatusInternalServerError, errs.SubscriptionValidationError)
-	}
-
-	// и в конце уже проверяем подписку
-	if !isSubscriptionValid {
-		return APIErrorSilent(http.StatusForbidden, errs.SubscriptionValidationError)
-	}
-
 	t, err := login.jwt.CreateJwtToken(c, u)
 	if err != nil || t == nil {
 		logger.Error(fmt.Errorf("login failed, reason: %s", err.Error()))
@@ -147,5 +136,5 @@ func (login *LoginEndpoint) LoginHandler(ctx echo.Context) error {
 		return APIErrorSilent(http.StatusInternalServerError, errs.TaskCreationError)
 	}
 
-	return APISuccess(http.StatusOK, t)
+	return APISuccessWithRefreshToken(ctx, http.StatusOK, t)
 }

@@ -104,6 +104,10 @@ func main() {
 		}
 	}()
 
+	// печатаем системную информацию и память
+	utils.PrintSystemData()
+	utils.PrintMemoryInfo()
+
 	// Используем буферизированный канал, как рекомендовано внутри signal.Notify функции
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

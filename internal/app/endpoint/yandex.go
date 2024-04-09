@@ -134,5 +134,5 @@ func (e *YandexEndpoint) YandexAuthLoginHandler(ctx echo.Context) error {
 	}
 
 	logger.Info("<< YandexAuthLoginHandler done.")
-	return APISuccess(http.StatusOK, t)
+	return APISuccessWithRefreshToken(ctx, http.StatusOK, t)
 }

@@ -3,6 +3,7 @@ package endpoint
 import (
 	"fmt"
 	"net/http"
+	"regexp"
 	"sso/internal/app/crypto"
 	"sso/internal/app/errs"
 	"sso/internal/app/interfaces"
@@ -41,6 +42,13 @@ func (e *CreateEndpoint) CreateHandler(ctx echo.Context) error {
 	}
 
 	if user.Email == "" || user.Password == "" {
+		return APIErrorSilent(http.StatusBadRequest, errs.InvalidInputData)
+	}
+
+	// проверяем корректность почты
+	re := regexp.MustCompile(`\+`)
+	if re.MatchString(user.Email) {
+		logger.Error(fmt.Sprintf("<< CreateHandler error, invalid email address %s", user.Email))
 		return APIErrorSilent(http.StatusBadRequest, errs.InvalidInputData)
 	}
 

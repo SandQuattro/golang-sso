@@ -1,4 +1,4 @@
-### ![image](https://github.com/SandQuattro/golangsso/assets/31468131/4454c9ac-4dcd-405a-a3cf-8e92cb2bd170)
+### ![image](https://github.com/SandQuattro/golang-sso/assets/31468131/4454c9ac-4dcd-405a-a3cf-8e92cb2bd170)
 # Single Sign-on API
 #### Version 1.0
 
@@ -28,10 +28,10 @@ Technologies:
 
 Can be deployed to **Docker**, Dockerfile included
 
-**Observalibity**: 
+**Observability**: 
 
 - Opentracing to Jaeger UI or my custom trace collector with LogDoc trace processing
-- Prometheus metrics (golang standart + custom business metrics) with Grafana visualization
+- Prometheus's metrics (golang standard + custom business metrics) with Grafana visualization
 - LogDoc logging visualization
 - Asynq queue monitoring using asynqmon 
 
@@ -43,8 +43,15 @@ Can be deployed to **Docker**, Dockerfile included
 - LogDoc logging subsystem, ClickHouse-based high performance logging collector https://logdoc.org/en/
 - pprof profiling in debug mode
 - Graceful shutdown
+- reading DER keys
+- automatic keys rotation with redis key publishing
+- longer key 4096-bit support
+- add redis-based user suspicious activity detection / temporarily blocking
+- redis-based registration / login locking (maintenance mode)
+- refresh token with db storage / redis storage
+- re-reading config using SIGHUP signal
 
-### **Alghoritms**:
+### **Algorithms**:
 
 #### ARGON2
 
@@ -135,12 +142,14 @@ Using Makefile:  make rebuild, restart, run, etc
 
 - [x] added reading keys from DER format, documentation
 - [x] automatic keys rotation with redis key publishing
-- [x] key length 2048-bit longer key 4096-bit
+- [x] key length 2048-bit, make longer key 4096-bit
 - [x] add redis-based user suspicious activity detection / block
 - [x] add redis-based registration / login locking (maintenance mode)
-- [x] add refresh token with db storage / redis storage with ttl
+- [x] add refresh token with db storage
 - [x] re-reading config using SIGHUP signal
-- [ ] add docker deployment
+- [x] add httpOnly cookie for refresh token
+- [x] add docker deployment
+- [x] add logging system information
 - [ ] uber zap logging
 - [ ] sliding salt position
 - [ ] gRPC other services integration

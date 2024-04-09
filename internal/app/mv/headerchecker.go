@@ -23,9 +23,19 @@ func HeaderPrinter() echo.MiddlewareFunc {
 
 			logger := logdoc.GetLogger()
 
+			var buffer strings.Builder
+			buffer.WriteString(ctx.Request().RequestURI)
+			buffer.WriteString("\nincoming headers\n")
 			for key, val := range ctx.Request().Header {
-				logger.Debug("header ", key, ":", val)
+				buffer.WriteString("header: ")
+				buffer.WriteString(key)
+				buffer.WriteString(": ")
+				buffer.WriteString(val[0])
+				buffer.WriteString("\n")
 			}
+
+			buffer.WriteString("\n")
+			logger.Debug(buffer.String())
 
 			return next(ctx)
 		}

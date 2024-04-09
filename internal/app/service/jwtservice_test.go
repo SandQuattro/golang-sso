@@ -27,8 +27,12 @@ var REDIS = redis.NewClient(&redis.Options{
 	Addr: "localhost:6379",
 })
 
+func getConfig() *hocon.Config {
+	return CONFIG
+}
+
 func TestRSAPEMKeysGenerate(t *testing.T) {
-	service := NewJWTService(context.Background(), CONFIG, REDIS, nil)
+	service := NewJWTService(context.Background(), getConfig, REDIS, nil)
 	pubKey, privKey, err := service.GenerateRSAKeys(2048)
 	if err != nil {
 		t.Fatalf("Error generating RSA keys: %v", err)
@@ -38,7 +42,7 @@ func TestRSAPEMKeysGenerate(t *testing.T) {
 }
 
 func TestED25519PEMKeysGenerate(t *testing.T) {
-	service := NewJWTService(context.Background(), CONFIG, REDIS, nil)
+	service := NewJWTService(context.Background(), getConfig, REDIS, nil)
 	_, _, err := service.GenerateED25519Keys()
 	if err != nil {
 		t.Fatalf("Error generating ED25519 keys: %v", err)
@@ -46,7 +50,7 @@ func TestED25519PEMKeysGenerate(t *testing.T) {
 }
 
 func TestDataSigningWithED25519(t *testing.T) {
-	service := NewJWTService(context.Background(), CONFIG, REDIS, nil)
+	service := NewJWTService(context.Background(), getConfig, REDIS, nil)
 	publicKey, privateKey, err := service.GenerateED25519Keys()
 	if err != nil || privateKey == nil {
 		t.Fatalf("Error generating keys or private key is nil: %v", err)
@@ -81,7 +85,7 @@ func TestDataSigningWithED25519(t *testing.T) {
 		t.Fatalf("Ошибка генерации токена: %v", err)
 	}
 
-	verificator := jwtverification.New(CONFIG, logrus.New(), jwtverification.PEM)
+	verificator := jwtverification.New(getConfig, logrus.New(), jwtverification.PEM)
 	claims2, _, err := verificator.ValidateToken(token, tempFile.Name(), nil)
 	if err != nil {
 		t.Fatalf("Ошибка проверки токена: %v", err)
@@ -91,7 +95,7 @@ func TestDataSigningWithED25519(t *testing.T) {
 }
 
 func TestGenerateED25519Keys(t *testing.T) {
-	service := NewJWTService(context.Background(), CONFIG, REDIS, nil)
+	service := NewJWTService(context.Background(), getConfig, REDIS, nil)
 	publicKey, privateKey, err := service.GenerateED25519Keys()
 	if err != nil {
 		t.Fatalf("Failed to generate ED25519 keys: %v", err)
@@ -102,7 +106,7 @@ func TestGenerateED25519Keys(t *testing.T) {
 }
 
 func TestConvertPublicKeyToPEM(t *testing.T) {
-	service := NewJWTService(context.Background(), CONFIG, REDIS, nil)
+	service := NewJWTService(context.Background(), getConfig, REDIS, nil)
 	publicKey, _, err := service.GenerateED25519Keys()
 	if err != nil {
 		t.Fatalf("Failed to generate ED25519 keys: %v", err)
@@ -123,7 +127,7 @@ func TestGenerateKeysRotation(t *testing.T) {
 	mockRedis := redis.NewClient(&redis.Options{})
 	defer mockRedis.Close()
 
-	service := NewJWTService(ctx, CONFIG, mockRedis, nil)
+	service := NewJWTService(ctx, getConfig, mockRedis, nil)
 	service.GenerateKeys(mockRedis, jwtverification.PEM, "ED25519")
 
 	// Assuming the key is pushed to Redis, check if the list is not empty

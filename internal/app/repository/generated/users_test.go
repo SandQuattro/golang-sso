@@ -16,7 +16,7 @@ var testQueries *Queries
 var conn *sql.DB
 
 func init() {
-	c, err := sql.Open("postgres", "host=localhost port=5432 user=postgres password=admin dbname=demo sslmode=disable")
+	c, err := sql.Open("postgres", "host=localhost port=5432 user=postgres password=admin dbname= sslmode=disable")
 	if err != nil {
 		log.Fatal(err)
 	}

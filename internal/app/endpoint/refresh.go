@@ -51,9 +51,17 @@ func (r *RefreshEndpoint) RefreshHandler(ctx echo.Context) error {
 	span := jaegertracing.CreateChildSpan(ctx, "refresh handler")
 	defer span.Finish()
 
+	refreshToken, err := ctx.Cookie("refresh_token")
+	if err != nil && errors.Is(err, http.ErrNoCookie) {
+		logger.Error(fmt.Errorf(">> RefreshHandler >  refresh token error: %w", err))
+		return APIErrorSilent(http.StatusUnauthorized, errs.SessionExpired)
+	}
+
+	logger.Debug(">> RefreshHandler > got refresh token: ", refreshToken.Value)
+
 	// получаем токен из redis, если его нет, он протух, возвращаем ошибку
 	m := make(map[string]string)
-	bytes, err := r.rdb.Get(ctx.Request().Context(), ctx.Request().Header.Get(AUTHORIZATION)).Bytes()
+	bytes, err := r.rdb.Get(ctx.Request().Context(), refreshToken.Value).Bytes()
 	if err != nil {
 		return APIErrorSilent(http.StatusUnauthorized, errs.SessionExpired)
 	}
@@ -89,24 +97,8 @@ func (r *RefreshEndpoint) RefreshHandler(ctx echo.Context) error {
 		return APIErrorSilent(http.StatusInternalServerError, errs.GenerateRefreshTokenError)
 	}
 
-	if token != ctx.Request().Header.Get(AUTHORIZATION) {
+	if token != refreshToken.Value {
 		return APIErrorSilent(http.StatusUnauthorized, errs.TokenMismatch)
-	}
-
-	var subscriptionInvalidatedError service.SubscriptionInvalidatedError
-
-	_, err = utils.ValidateUserSubscription(ctx.Request().Context(), user)
-	if err != nil {
-		switch {
-		case errors.As(err, &subscriptionInvalidatedError):
-			logger.Error(fmt.Errorf("refresh failed, subscription invalidated"))
-			logger.Info("<< RefreshHandler done.")
-			return APIErrorSilent(http.StatusForbidden, errs.SubscriptionValidationError)
-		default:
-			logger.Error(fmt.Errorf("refresh failed, reason: %s", err.Error()))
-			logger.Info("<< RefreshHandler done.")
-			return APIErrorSilent(http.StatusForbidden, errs.RefreshTokenFailed)
-		}
 	}
 
 	err = r.rdb.Del(ctx.Request().Context(), ctx.Request().Header.Get(AUTHORIZATION)).Err()
@@ -120,5 +112,5 @@ func (r *RefreshEndpoint) RefreshHandler(ctx echo.Context) error {
 	}
 
 	logger.Info("<< RefreshHandler done.")
-	return APISuccess(http.StatusOK, jwtToken)
+	return APISuccessWithRefreshToken(ctx, http.StatusOK, jwtToken)
 }

@@ -54,13 +54,13 @@ func CreateTask(config func() *hocon.Config, span opentracing.Span, taskType str
 				return err
 			}
 		case TypeEmailVerification:
-			task, err = NewEmailTask(name, "verify@example.com", "example.com registration. Verification email", email, "confirm", content)
+			task, err = NewEmailTask(name, "verify@example.com", "Monkeyjob registration. Verification email", email, "confirm", content)
 			if err != nil {
 				logger.Error(fmt.Sprintf("could not create task: %v", err))
 				return err
 			}
 		case TypePasswordReset:
-			task, err = NewEmailTask(name, "reset@example.com", "example.com. Password reset email", email, "reset", content)
+			task, err = NewEmailTask(name, "reset@example.com", "Monkeyjob. Password reset email", email, "reset", content)
 			if err != nil {
 				logger.Error(fmt.Sprintf("could not create task: %v", err))
 				return err

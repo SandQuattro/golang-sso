@@ -143,5 +143,5 @@ func (e *VKEndpoint) VKAuthLoginHandler(ctx echo.Context) error {
 	}
 
 	logger.Info("<< VKAuthLoginHandler done.")
-	return APISuccess(http.StatusOK, t)
+	return APISuccessWithRefreshToken(ctx, http.StatusOK, t)
 }

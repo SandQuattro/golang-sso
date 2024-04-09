@@ -43,14 +43,6 @@ type JwtService struct {
 	t          repository.TokenRepository
 }
 
-type SubscriptionInvalidatedError struct{}
-
-func (m SubscriptionInvalidatedError) Error() string {
-	return "subscription invalidated"
-}
-
-var SubscriptionInvalidated = SubscriptionInvalidatedError{}
-
 func NewJWTService(ctx context.Context, config func() *hocon.Config, rdb *redis.Client, db *sqlx.DB) *JwtService {
 	urepo := repository.New(db)
 	trepo := repository.NewTokenRepository(db)
@@ -216,8 +208,8 @@ func (s *JwtService) CreateJwtToken(ctx context.Context, user *structs.User) (ma
 		"fio": fio,
 		"iss": s.config().GetString("jwt.issuer"),
 		"aud": s.config().GetString("jwt.audience"),
-		"iat": time.Now().Unix(),
-		"exp": expirationTime.Unix(),
+		"iat": time.Now().UTC().Unix(),
+		"exp": expirationTime.UTC().Unix(),
 		"adr": user.Email,
 		"rol": user.Role,
 	}
@@ -329,31 +321,16 @@ func (s *JwtService) RefreshJwtToken(ctx echo.Context, tokenStr string) (string,
 
 	if claims["sub"] != nil && claims["sub"] != "" {
 		sub := claims["sub"].(string)
-		user, err := s.r.FindUserBySub(sub)
+		_, err := s.r.FindUserBySub(sub)
 		if err != nil {
 			logger.Warn("error getting user by sub, trying by id")
 			return "", fmt.Errorf("error getting user by sub, %w", err)
 		}
-
-		isSubscriptionValid, err := utils.ValidateUserSubscription(c, user)
-		if err != nil {
-			return "", err
-		}
-		if !isSubscriptionValid {
-			return "", SubscriptionInvalidated
-		}
 	} else {
-		user, err := s.r.FindUserByID(c, int(claims["id"].(float64)))
+		_, err := s.r.FindUserByID(c, int(claims["id"].(float64)))
 		if err != nil {
 			logger.Warn("error getting user by id")
 			return "", fmt.Errorf("error getting user by id, %w", err)
-		}
-		isSubscriptionValid, err := utils.ValidateUserSubscription(c, user)
-		if err != nil {
-			return "", err
-		}
-		if !isSubscriptionValid {
-			return "", SubscriptionInvalidated
 		}
 	}
 

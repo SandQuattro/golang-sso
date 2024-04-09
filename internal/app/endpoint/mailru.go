@@ -139,5 +139,5 @@ func (e *MailRuEndpoint) MailRuAuthLoginHandler(ctx echo.Context) error {
 	}
 
 	logger.Info("<< MailRuAuthLoginHandler done.")
-	return APISuccess(http.StatusOK, t)
+	return APISuccessWithRefreshToken(ctx, http.StatusOK, t)
 }

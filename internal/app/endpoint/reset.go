@@ -3,6 +3,7 @@ package endpoint
 import (
 	"crypto/rand"
 	"fmt"
+	"github.com/golang-jwt/jwt/v5"
 	"net/http"
 	"sso/internal/app/crypto"
 	"sso/internal/app/errs"
@@ -157,5 +158,97 @@ func (e *ResetEndpoint) PasswordResetValidateHandler(ctx echo.Context) error {
 	}
 
 	logger.Info("<< PasswordResetHandler done")
+	return APISuccess(http.StatusOK, map[string]string{"message": "пароль успешно изменен"})
+}
+
+func (e *ResetEndpoint) PasswordChangeHandler(ctx echo.Context) error {
+	logger := logdoc.GetLogger()
+	logger.Info(">> PasswordChangeHandler started..")
+
+	span := jaegertracing.CreateChildSpan(ctx, "password change handler")
+	defer span.Finish()
+
+	pwdChange := make(map[string]string)
+	err := ctx.Bind(&pwdChange)
+	if err != nil {
+		return APIErrorSilent(http.StatusBadRequest, errs.InvalidInputData)
+	}
+	current, ok := pwdChange["current"]
+	if !ok {
+		return APIErrorSilent(http.StatusBadRequest, errs.InvalidInputData)
+	}
+	pwd1, ok := pwdChange["pwd1"]
+	if !ok {
+		return APIErrorSilent(http.StatusBadRequest, errs.InvalidInputData)
+	}
+	pwd2, ok := pwdChange["pwd2"]
+	if !ok {
+		return APIErrorSilent(http.StatusBadRequest, errs.InvalidInputData)
+	}
+	if pwd1 != pwd2 {
+		return APIErrorSilent(http.StatusBadRequest, errs.InvalidInputData)
+	}
+
+	c := opentracing.ContextWithSpan(ctx.Request().Context(), span)
+
+	claims := ctx.Get("claims").(jwt.MapClaims)
+	email := claims["adr"].(string)
+
+	u, err := e.users.FindUserByLogin(c, email)
+	if err != nil {
+		logger.Error(fmt.Errorf("user not found, reason: %s", err.Error()))
+		logger.Info("<< PasswordChangeHandler done.")
+		return APIErrorSilent(http.StatusForbidden, errs.UserGettingError)
+	}
+
+	if u == nil {
+		span.SetTag("error", true)
+		span.LogKV("error.message", "пользователь "+email+" отсутствует в БД")
+		err := utils.CreateTask(e.config, span, utils.TypeTelegramDelivery, email, email, u.ID, fmt.Sprintf("Attention required! Error in password change service, user: %s not found in database\nIP:%s", email, ctx.RealIP()))
+		if err != nil {
+			logger.Error(fmt.Errorf("error creating task: %s", err.Error()))
+			return APIErrorSilent(http.StatusInternalServerError, errs.TaskCreationError)
+		}
+		return APIErrorSilent(http.StatusForbidden, errs.AccessDenied)
+	}
+
+	// Сначала проверяем пароль на корректность
+	if !crypto.ComparePass(u.Password, current) {
+		err := utils.CreateTask(e.config, span, utils.TypeTelegramDelivery, u.Name, u.Email, u.ID, fmt.Sprintf("Attention required! Error in password change service, invalid current password for user %s\nIP:%s", u.Email, ctx.RealIP()))
+		if err != nil {
+			logger.Error(fmt.Errorf("error creating task: %s", err.Error()))
+			return APIErrorSilent(http.StatusInternalServerError, errs.TaskCreationError)
+		}
+		return APIErrorSilent(http.StatusForbidden, errs.AccessDenied)
+	}
+
+	// затем подтверждена ли почта
+	if !u.EmailVerified {
+		return APIErrorSilent(http.StatusForbidden, errs.AccessDenied)
+	}
+
+	salt := make([]byte, 8)
+	_, err = rand.Read(salt)
+	if err != nil {
+		logger.Error("Ошибка заполнения salt slice, ", err.Error())
+		span.SetTag("error", true)
+		return APIErrorSilent(http.StatusBadRequest, errs.InternalProcessingError)
+	}
+
+	hashedPwd := crypto.HashArgon2(salt, pwd1, 32)
+
+	err = e.users.UpdateUserPassword(c, "changing password", u.ID, hashedPwd)
+	if err != nil {
+		logger.Error("<< PasswordChangeHandler error", err)
+		return APIErrorSilent(http.StatusBadRequest, errs.PasswordUpdateError)
+	}
+
+	err = utils.CreateTask(e.config, span, utils.TypeTelegramDelivery, email, email, u.ID, fmt.Sprintf("User password changed successfully: %s, IP: %s", u.Email, ctx.RealIP()))
+	if err != nil {
+		logger.Error(fmt.Errorf("error creating task: %s", err.Error()))
+		return APIErrorSilent(http.StatusInternalServerError, errs.TaskCreationError)
+	}
+
+	logger.Info("<< PasswordChangeHandler done")
 	return APISuccess(http.StatusOK, map[string]string{"message": "пароль успешно изменен"})
 }
