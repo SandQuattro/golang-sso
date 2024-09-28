@@ -1,4 +1,4 @@
-![Go Report](https://goreportcard.com/badge/github.com/sandquattro/golang-sso-echo)
+![Go Report](https://goreportcard.com/badge/github.com/SandQuattro/golang-sso-echo)
 ![Repository Top Language](https://img.shields.io/github/languages/top/sandquattro/golang-sso-echo)
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/sandquattro/golang-sso-echo)
 ![Github Repository Size](https://img.shields.io/github/repo-size/sandquattro/golang-sso-echo)
